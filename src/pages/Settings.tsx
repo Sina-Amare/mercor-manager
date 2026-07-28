@@ -67,7 +67,7 @@ export default function Settings() {
     try {
       if (editingUser) {
         // Update existing user
-        const data: Record<string, string> = { name: formName, role: formRole };
+        const data: Record<string, string> = { name: formName, username: formUsername.trim(), role: formRole };
         if (formPassword) {
           data.password = formPassword;
           data.passwordConfirm = formPassword;
@@ -253,7 +253,6 @@ export default function Settings() {
                   value={formUsername}
                   onChange={(e) => setFormUsername(e.target.value)}
                   placeholder="e.g. sina"
-                  disabled={!!editingUser}
                 />
               </div>
               <div className="form-group">
