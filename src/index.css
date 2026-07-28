@@ -1385,7 +1385,6 @@ textarea:focus-visible,
 
 .latin-text {
   direction: ltr;
-  display: inline-block;
   font-family: var(--font-en);
   unicode-bidi: isolate;
 }

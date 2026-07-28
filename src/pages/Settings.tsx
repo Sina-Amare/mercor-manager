@@ -359,8 +359,8 @@ export default function Settings() {
                         {member.name}
                       </div>
                     </td>
-                    <td className="latin-text" style={{ fontSize: 'var(--text-xs)' }}>
-                      @{member.username}
+                    <td style={{ fontSize: 'var(--text-xs)' }}>
+                      <span className="latin-text">@{member.username}</span>
                     </td>
                     <td>
                       <span
