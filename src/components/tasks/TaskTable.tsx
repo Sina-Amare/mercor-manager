@@ -1,0 +1,375 @@
+import { useState, useMemo } from 'react';
+import { Search, Trash2, ArrowRightLeft, Eye, ChevronUp, ChevronDown } from 'lucide-react';
+import type { Task, TaskStatus } from '../../types';
+import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../../store';
+import StatusBadge from '../shared/StatusBadge';
+import DateDisplay from '../shared/DateDisplay';
+import TaskDetailPanel from './TaskDetailPanel';
+import { deleteTask, deleteTasks, updateTask as apiUpdateTask } from '../../api/tasks';
+import { formatCurrency, usdToIrr } from '../../utils/dates';
+
+interface Props {
+  tasks: Task[];
+  title: string;
+  subtitle?: string;
+  showMember?: boolean;
+  showActions?: boolean;
+  filterByStatus?: TaskStatus;
+}
+
+type SortKey = 'task_id' | 'status' | 'assigned_to' | 'created' | 'payment_amount_usd';
+type SortDir = 'asc' | 'desc';
+
+export default function TaskTable({
+  tasks: inputTasks,
+  title,
+  subtitle,
+  showMember = true,
+  showActions = true,
+}: Props) {
+  const { user } = useAuthStore();
+  const { t } = useLanguageStore();
+  const { selectedTaskIds, toggleTaskSelection, selectAllTasks, clearSelection, setTaskDetail, taskDetailId, removeTask, removeTasks, members, settings, updateTask } = useAppStore();
+  const { addToast } = useToastStore();
+  const isAdmin = user?.role === 'admin';
+
+  const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('created');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [reassignModalOpen, setReassignModalOpen] = useState(false);
+  const [reassignTarget, setReassignTarget] = useState('');
+
+  // Filter & Sort
+  const filteredTasks = useMemo(() => {
+    let result = inputTasks;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (t) =>
+          t.task_id.toLowerCase().includes(q) ||
+          t.body.toLowerCase().includes(q) ||
+          t.expand?.assigned_to?.name?.toLowerCase().includes(q)
+      );
+    }
+    result.sort((a, b) => {
+      let aVal: string | number = '';
+      let bVal: string | number = '';
+      switch (sortKey) {
+        case 'task_id':
+          aVal = a.task_id;
+          bVal = b.task_id;
+          break;
+        case 'status':
+          aVal = a.status;
+          bVal = b.status;
+          break;
+        case 'assigned_to':
+          aVal = a.expand?.assigned_to?.name || '';
+          bVal = b.expand?.assigned_to?.name || '';
+          break;
+        case 'created':
+          aVal = a.created;
+          bVal = b.created;
+          break;
+        case 'payment_amount_usd':
+          aVal = a.payment_amount_usd;
+          bVal = b.payment_amount_usd;
+          break;
+      }
+      if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return result;
+  }, [inputTasks, search, sortKey, sortDir]);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
+  const SortIcon = ({ col }: { col: SortKey }) => {
+    if (sortKey !== col) return null;
+    return sortDir === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />;
+  };
+
+  const handleSelectAll = () => {
+    if (selectedTaskIds.length === filteredTasks.length) {
+      clearSelection();
+    } else {
+      selectAllTasks(filteredTasks.map((t) => t.id));
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteTask(id);
+      removeTask(id);
+      addToast('Task deleted', 'success');
+    } catch {
+      addToast('Failed to delete task', 'error');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    try {
+      await deleteTasks(selectedTaskIds);
+      removeTasks(selectedTaskIds);
+      addToast(`${selectedTaskIds.length} tasks deleted`, 'success');
+    } catch {
+      addToast('Failed to delete tasks', 'error');
+    }
+  };
+
+  const handleBulkReassign = async () => {
+    if (!reassignTarget) return;
+    try {
+      for (const id of selectedTaskIds) {
+        await apiUpdateTask(id, { assigned_to: reassignTarget } as Partial<Task>);
+        updateTask(id, { assigned_to: reassignTarget });
+      }
+      clearSelection();
+      setReassignModalOpen(false);
+      addToast(`${selectedTaskIds.length} tasks reassigned`, 'success');
+    } catch {
+      addToast('Failed to reassign tasks', 'error');
+    }
+  };
+
+  const selectedTask = taskDetailId
+    ? inputTasks.find((t) => t.id === taskDetailId) || null
+    : null;
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">{title}</h1>
+          {subtitle && <p className="page-subtitle">{subtitle}</p>}
+        </div>
+      </div>
+
+      <div className="data-table-wrapper">
+        <div className="data-table-toolbar">
+          <div className="data-table-search">
+            <Search size={16} style={{ color: 'var(--color-text-tertiary)', flexShrink: 0 }} />
+            <input
+              type="text"
+              placeholder={t('tasks.search')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="data-table-filters">
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+              {filteredTasks.length} {t('common.total')}
+            </span>
+          </div>
+        </div>
+
+        {filteredTasks.length === 0 ? (
+          <div className="data-table-empty">
+            <div className="data-table-empty-icon">📋</div>
+            <div className="data-table-empty-text">{t('tasks.no_tasks')}</div>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-tertiary)', marginTop: 'var(--space-2)' }}>
+              {t('tasks.no_tasks_desc')}
+            </p>
+          </div>
+        ) : (
+          <table className="data-table">
+            <thead>
+              <tr>
+                {isAdmin && showActions && (
+                  <th style={{ width: '40px' }}>
+                    <input
+                      type="checkbox"
+                      className="data-table-checkbox"
+                      checked={selectedTaskIds.length === filteredTasks.length && filteredTasks.length > 0}
+                      onChange={handleSelectAll}
+                    />
+                  </th>
+                )}
+                <th onClick={() => handleSort('task_id')}>
+                  {t('tasks.task_id')} <SortIcon col="task_id" />
+                </th>
+                {showMember && (
+                  <th onClick={() => handleSort('assigned_to')}>
+                    {t('tasks.assigned_to')} <SortIcon col="assigned_to" />
+                  </th>
+                )}
+                <th onClick={() => handleSort('status')}>
+                  {t('tasks.status')} <SortIcon col="status" />
+                </th>
+                <th onClick={() => handleSort('created')}>
+                  {t('tasks.created')} <SortIcon col="created" />
+                </th>
+                <th onClick={() => handleSort('payment_amount_usd')}>
+                  {t('tasks.payment')} <SortIcon col="payment_amount_usd" />
+                </th>
+                {showActions && <th>{t('tasks.actions')}</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredTasks.map((task) => (
+                <tr
+                  key={task.id}
+                  className={selectedTaskIds.includes(task.id) ? 'selected' : ''}
+                >
+                  {isAdmin && showActions && (
+                    <td>
+                      <input
+                        type="checkbox"
+                        className="data-table-checkbox"
+                        checked={selectedTaskIds.includes(task.id)}
+                        onChange={() => toggleTaskSelection(task.id)}
+                      />
+                    </td>
+                  )}
+                  <td>
+                    <span className="task-id">{task.task_id}</span>
+                  </td>
+                  {showMember && (
+                    <td>
+                      <div className="member-cell">
+                        <div className="member-avatar">
+                          {task.expand?.assigned_to?.name?.charAt(0).toUpperCase() || '?'}
+                        </div>
+                        {task.expand?.assigned_to?.name || '—'}
+                      </div>
+                    </td>
+                  )}
+                  <td>
+                    <StatusBadge status={task.status} />
+                  </td>
+                  <td>
+                    <DateDisplay date={task.created} />
+                  </td>
+                  <td>
+                    {task.payment_amount_usd > 0 ? (
+                      <div>
+                        <span className="payment-amount">
+                          {formatCurrency(task.payment_amount_usd, 'USD')}
+                        </span>
+                        <br />
+                        <span className="payment-amount-irr">
+                          {formatCurrency(usdToIrr(task.payment_amount_usd, settings.usd_to_irr_rate), 'IRR')}
+                        </span>
+                      </div>
+                    ) : (
+                      <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>
+                    )}
+                  </td>
+                  {showActions && (
+                    <td>
+                      <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                        <button
+                          className="btn btn-ghost btn-icon btn-sm"
+                          title={t('tasks.view_detail')}
+                          onClick={() => setTaskDetail(task.id)}
+                        >
+                          <Eye size={16} />
+                        </button>
+                        {isAdmin && (
+                          <button
+                            className="btn btn-ghost btn-icon btn-sm"
+                            title={t('tasks.delete')}
+                            onClick={() => handleDelete(task.id)}
+                            style={{ color: 'var(--color-danger)' }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Bulk Action Bar */}
+      {selectedTaskIds.length > 0 && isAdmin && (
+        <div className="bulk-bar">
+          <span className="bulk-bar-count">
+            {selectedTaskIds.length} {t('tasks.selected')}
+          </span>
+          <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>
+            <Trash2 size={14} />
+            {t('tasks.bulk_delete')}
+          </button>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => setReassignModalOpen(true)}
+            style={{ color: 'white', borderColor: 'rgba(255,255,255,0.2)' }}
+          >
+            <ArrowRightLeft size={14} />
+            {t('tasks.bulk_reassign')}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={clearSelection}
+            style={{ color: 'rgba(255,255,255,0.6)' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Reassign Modal */}
+      {reassignModalOpen && (
+        <>
+          <div className="modal-backdrop" onClick={() => setReassignModalOpen(false)} />
+          <div className="modal">
+            <div className="modal-header">
+              <h3 className="modal-title">{t('tasks.reassign')}</h3>
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setReassignModalOpen(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">{t('upload.assign_label')}</label>
+                <select
+                  className="form-select"
+                  value={reassignTarget}
+                  onChange={(e) => setReassignTarget(e.target.value)}
+                >
+                  <option value="">{t('upload.assign_placeholder')}</option>
+                  {members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setReassignModalOpen(false)}>
+                {t('common.cancel')}
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={!reassignTarget}
+                onClick={handleBulkReassign}
+              >
+                {t('tasks.reassign')} ({selectedTaskIds.length})
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Task Detail Panel */}
+      {selectedTask && (
+        <>
+          <div className="modal-backdrop" onClick={() => setTaskDetail(null)} />
+          <TaskDetailPanel task={selectedTask} onClose={() => setTaskDetail(null)} />
+        </>
+      )}
+    </div>
+  );
+}
