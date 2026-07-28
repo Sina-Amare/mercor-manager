@@ -358,8 +358,8 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
           </div>
         )}
 
-        {/* Member Payment View */}
-        {isMember && task.payment_amount_usd > 0 && (
+        {/* Member Payment View (Visible ONLY to the assigned member) */}
+        {isMember && isMyTask && task.payment_amount_usd > 0 && (
           <div className="task-detail-field">
             <div className="task-detail-field-label">{t('tasks.payment')}</div>
             <div style={{ background: 'var(--color-surface)', padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>

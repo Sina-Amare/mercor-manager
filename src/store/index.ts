@@ -138,8 +138,19 @@ export const useAppStore = create<AppState>()((set, get) => ({
       selectedTaskIds: [],
     })),
 
-  setMembers: (members) => set({ members }),
-  addMember: (member) => set((s) => ({ members: [...s.members, member] })),
+  setMembers: (members) => {
+    // Unique by id and username
+    const unique = members.filter(
+      (m, i, arr) => arr.findIndex((x) => x.id === m.id || x.username === m.username) === i
+    );
+    set({ members: unique });
+  },
+  addMember: (member) =>
+    set((s) => {
+      const exists = s.members.some((m) => m.id === member.id || m.username === member.username);
+      if (exists) return { members: s.members.map((m) => (m.id === member.id || m.username === member.username ? member : m)) };
+      return { members: [...s.members, member] };
+    }),
   updateMember: (id, updates) =>
     set((s) => ({
       members: s.members.map((m) =>

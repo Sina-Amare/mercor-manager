@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { UserPlus, Save, Loader2, Trash2, Edit2, AlertCircle } from 'lucide-react';
+import { UserPlus, Save, Loader2, Trash2, Edit2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useLanguageStore, useAppStore, useToastStore } from '../store';
 import { createUser, updateUser as apiUpdateUser, deleteUser as apiDeleteUser, updateSettings } from '../api/tasks';
 import type { User } from '../types';
@@ -19,6 +19,7 @@ export default function Settings() {
   const [formName, setFormName] = useState('');
   const [formUsername, setFormUsername] = useState('');
   const [formPassword, setFormPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [formRole, setFormRole] = useState<'admin' | 'member'>('member');
   const [savingUser, setSavingUser] = useState(false);
 
@@ -43,6 +44,7 @@ export default function Settings() {
     setFormName('');
     setFormUsername('');
     setFormPassword('');
+    setShowPassword(false);
     setFormRole('member');
     setEditingUser(null);
     setShowUserForm(false);
@@ -53,11 +55,13 @@ export default function Settings() {
     setFormName(user.name);
     setFormUsername(user.username);
     setFormPassword('');
+    setShowPassword(false);
     setFormRole(user.role as 'admin' | 'member');
     setShowUserForm(true);
   };
 
   const handleSaveUser = async () => {
+    if (savingUser) return;
     if (!formName.trim() || !formUsername.trim()) return;
     setSavingUser(true);
     try {
@@ -98,7 +102,7 @@ export default function Settings() {
   };
 
   const handleDeleteUserConfirm = async () => {
-    if (!deletingUser) return;
+    if (!deletingUser || deleting) return;
     setDeleting(true);
     try {
       await apiDeleteUser(deletingUser.id);
@@ -192,13 +196,29 @@ export default function Settings() {
               </div>
               <div className="form-group">
                 <label className="form-label">{t('members.password')}</label>
-                <input
-                  type="password"
-                  className="form-input"
-                  value={formPassword}
-                  onChange={(e) => setFormPassword(e.target.value)}
-                  placeholder={editingUser ? 'Leave empty to keep current' : 'Set password'}
-                />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    className="form-input"
+                    value={formPassword}
+                    onChange={(e) => setFormPassword(e.target.value)}
+                    placeholder={editingUser ? 'Leave empty to keep current' : 'Set password'}
+                    style={{ paddingInlineEnd: '40px' }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-icon btn-sm"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: 'absolute',
+                      insetInlineEnd: '8px',
+                      color: 'var(--color-text-secondary)',
+                    }}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
               <div className="form-group">
                 <label className="form-label">{t('members.role')}</label>
