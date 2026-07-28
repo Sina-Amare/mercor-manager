@@ -7,6 +7,7 @@ import { MOCK_TASKS, MOCK_USERS, MOCK_SETTINGS } from './mockData';
 let localTasks: Task[] = [...MOCK_TASKS];
 let localUsers: User[] = [...MOCK_USERS];
 let localSettings: AppSettings = { ...MOCK_SETTINGS };
+let localPasswords: Record<string, string> = {};
 
 function deduplicateUsers(users: User[]): User[] {
   return users.filter((u, i, arr) => arr.findIndex((x) => x.id === u.id || x.username === u.username) === i);
@@ -20,6 +21,8 @@ try {
   if (savedUsers) localUsers = deduplicateUsers(JSON.parse(savedUsers));
   const savedSettings = localStorage.getItem('agnus_local_settings');
   if (savedSettings) localSettings = JSON.parse(savedSettings);
+  const savedPasswords = localStorage.getItem('agnus_local_passwords');
+  if (savedPasswords) localPasswords = JSON.parse(savedPasswords);
 } catch {
   // Ignore localStorage errors
 }
@@ -30,9 +33,34 @@ function saveLocalState() {
     localStorage.setItem('agnus_local_tasks', JSON.stringify(localTasks));
     localStorage.setItem('agnus_local_users', JSON.stringify(localUsers));
     localStorage.setItem('agnus_local_settings', JSON.stringify(localSettings));
+    localStorage.setItem('agnus_local_passwords', JSON.stringify(localPasswords));
   } catch {
     // Ignore localStorage errors
   }
+}
+
+export function validateLocalLogin(username: string, password: string): User | null {
+  const cleanUsername = username.trim().toLowerCase();
+  const cleanPassword = password.trim();
+
+  // Find user in localUsers or MOCK_USERS
+  const user =
+    localUsers.find((u) => u.username.trim().toLowerCase() === cleanUsername) ||
+    MOCK_USERS.find((u) => u.username.trim().toLowerCase() === cleanUsername);
+
+  if (!user) return null;
+
+  const savedPassword = localPasswords[cleanUsername];
+  if (savedPassword) {
+    return savedPassword === cleanPassword ? user : null;
+  }
+
+  // If no password set yet, save this password on first login
+  if (cleanPassword) {
+    localPasswords[cleanUsername] = cleanPassword;
+    saveLocalState();
+  }
+  return user;
 }
 
 // ─── Instant PocketBase Connectivity Check (prevents 10s timeout delays) ─────
@@ -288,8 +316,13 @@ export async function createUser(data: {
   }
 
   // Deduplicate by username in offline mode
+  const cleanUsername = data.username.trim().toLowerCase();
+  if (data.password) {
+    localPasswords[cleanUsername] = data.password.trim();
+  }
+
   const existingIdx = localUsers.findIndex(
-    (u) => u.username.toLowerCase() === data.username.trim().toLowerCase()
+    (u) => u.username.toLowerCase() === cleanUsername
   );
   if (existingIdx !== -1) {
     const updated: User = {
@@ -335,6 +368,9 @@ export async function updateUser(
   const idx = localUsers.findIndex((u) => u.id === id);
   if (idx !== -1) {
     const updated: User = { ...localUsers[idx], ...data, updated: new Date().toISOString() };
+    if (data.password) {
+      localPasswords[updated.username.trim().toLowerCase()] = data.password.trim();
+    }
     localUsers[idx] = updated;
     saveLocalState();
     return updated;

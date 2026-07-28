@@ -1,7 +1,7 @@
 import pb from './pb';
 import type { User } from '../types';
 import { useAuthStore } from '../store';
-import { MOCK_USERS } from './mockData';
+import { validateLocalLogin } from './tasks';
 
 export async function login(username: string, password: string): Promise<User> {
   try {
@@ -9,16 +9,14 @@ export async function login(username: string, password: string): Promise<User> {
     const user = authData.record as unknown as User;
     useAuthStore.getState().login(user, pb.authStore.token);
     return user;
-  } catch (err) {
-    // Fallback to standalone/demo auth if PB is offline or collection doesn't exist yet
-    const foundUser = MOCK_USERS.find(
-      (u) => u.username.toLowerCase() === username.trim().toLowerCase()
-    );
+  } catch {
+    // Fallback to standalone auth validating against localUsers & stored passwords
+    const foundUser = validateLocalLogin(username, password);
     if (foundUser) {
       useAuthStore.getState().login(foundUser, 'demo_token_' + foundUser.id);
       return foundUser;
     }
-    throw err;
+    throw new Error('Invalid username or password');
   }
 }
 
