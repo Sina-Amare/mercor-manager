@@ -13,6 +13,7 @@ import {
   Menu,
   X,
   ChevronRight,
+  AlertCircle,
 } from 'lucide-react';
 import { useAuthStore, useLanguageStore, useAppStore } from '../../store';
 import { logout } from '../../api/auth';
@@ -26,9 +27,11 @@ export default function Sidebar() {
   const isAdmin = user?.role === 'admin';
 
   const [membersOpen, setMembersOpen] = useState(true);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  const handleLogout = () => {
+  const confirmLogout = () => {
     logout();
+    setShowLogoutModal(false);
     navigate('/login');
   };
 
@@ -185,7 +188,7 @@ export default function Sidebar() {
 
         {/* User Footer Profile */}
         <div className="sidebar-footer">
-          <div className="sidebar-user" onClick={handleLogout} title={t('nav.logout')}>
+          <div className="sidebar-user" onClick={() => setShowLogoutModal(true)} title={t('nav.logout')}>
             <div className="sidebar-user-avatar">
               {user?.name?.charAt(0).toUpperCase() || '?'}
             </div>
@@ -199,6 +202,36 @@ export default function Sidebar() {
           </div>
         </div>
       </aside>
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutModal && (
+        <>
+          <div className="modal-backdrop" onClick={() => setShowLogoutModal(false)} />
+          <div className="modal">
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertCircle size={20} style={{ color: 'var(--color-primary)' }} />
+                Log Out of {t('app_name')}?
+              </h3>
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowLogoutModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
+                Are you sure you want to log out of your session as <strong>{user?.name}</strong> (@{user?.username})?
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowLogoutModal(false)}>
+                {t('common.cancel')}
+              </button>
+              <button className="btn btn-primary" onClick={confirmLogout} style={{ background: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}>
+                <LogOut size={16} />
+                Log Out
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

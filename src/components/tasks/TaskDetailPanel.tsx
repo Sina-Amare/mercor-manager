@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { X, Save, CheckCircle, ArrowRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Save, CheckCircle, ArrowRight, AlertCircle } from 'lucide-react';
 import type { Task, TaskStatus } from '../../types';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../../store';
 import StatusBadge from '../shared/StatusBadge';
@@ -24,6 +24,16 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
   const [notes, setNotes] = useState(task.admin_notes || '');
   const [paymentUsd, setPaymentUsd] = useState(task.payment_amount_usd || 0);
   const [saving, setSaving] = useState(false);
+  const [confirmingAction, setConfirmingAction] = useState<{ label: string; status: TaskStatus; color: string } | null>(null);
+
+  // Close drawer on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   const handleStatusChange = async (newStatus: TaskStatus, extraData?: Partial<Task>) => {
     setSaving(true);
@@ -46,11 +56,12 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
       }
       const updated = await apiUpdateTask(task.id, data);
       updateTask(task.id, updated);
-      addToast(`Task status updated to ${newStatus}`, 'success');
+      addToast(`Task status updated to ${newStatus.toUpperCase()}`, 'success');
     } catch {
       addToast('Failed to update task', 'error');
     } finally {
       setSaving(false);
+      setConfirmingAction(null);
     }
   };
 
@@ -188,15 +199,13 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
 
   return (
     <div className="task-detail-panel">
-      {/* Drawer Header */}
+      {/* Panel Header */}
       <div className="task-detail-header">
-        <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
           <span className="task-id">{task.task_id}</span>
-          <div style={{ marginTop: 'var(--space-2)' }}>
-            <StatusBadge status={task.status} />
-          </div>
+          <StatusBadge status={task.status} />
         </div>
-        <button className="btn btn-ghost btn-icon" onClick={onClose}>
+        <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose} title="Close (Esc)">
           <X size={18} />
         </button>
       </div>
@@ -246,15 +255,17 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
               <div className="member-avatar">
                 {task.expand?.assigned_to?.name?.charAt(0).toUpperCase() || '?'}
               </div>
-              {task.expand?.assigned_to?.name || '—'}
+              <span style={{ fontWeight: 'var(--weight-semibold)' }}>
+                {task.expand?.assigned_to?.name || '—'}
+              </span>
             </div>
           )}
         </div>
 
-        {/* Task Body Text */}
+        {/* Task Body / Text Prompt */}
         <div className="task-detail-field">
-          <div className="task-detail-field-label">{t('tasks.body')}</div>
-          <div className="task-detail-body-text">{task.body || '—'}</div>
+          <div className="task-detail-field-label">{t('upload.body_label')}</div>
+          <div className="task-detail-body-text">{task.body}</div>
         </div>
 
         {/* Timeline & Verdict Dates */}
@@ -381,6 +392,39 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
         )}
       </div>
 
+      {/* Action Status Confirmation Modal */}
+      {confirmingAction && (
+        <>
+          <div className="modal-backdrop" onClick={() => setConfirmingAction(null)} />
+          <div className="modal" style={{ zIndex: 310 }}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertCircle size={20} style={{ color: 'var(--color-primary)' }} />
+                Confirm Action: {confirmingAction.label}
+              </h3>
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setConfirmingAction(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
+                Are you sure you want to update task <strong className="input-mono">{task.task_id}</strong> to status: <strong>{confirmingAction.label}</strong>?
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setConfirmingAction(null)}>
+                {t('common.cancel')}
+              </button>
+              <button
+                className={`btn ${confirmingAction.color}`}
+                onClick={() => handleStatusChange(confirmingAction.status)}
+                disabled={saving}
+              >
+                Confirm {confirmingAction.label}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Primary Action Controls */}
       {(memberActions.length > 0 || adminActions.length > 0) && (
         <div className="task-detail-actions">
@@ -388,7 +432,7 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
             <button
               key={action.status}
               className={`btn ${action.color} btn-sm`}
-              onClick={() => handleStatusChange(action.status)}
+              onClick={() => setConfirmingAction(action)}
               disabled={saving}
               style={{ flex: 1 }}
             >
