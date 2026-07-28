@@ -1,4 +1,4 @@
-import pb from './pb';
+import { supabase } from './supabase';
 import type { Task, User, TaskStatus, AppSettings } from '../types';
 import { MOCK_TASKS, MOCK_USERS, MOCK_SETTINGS } from './mockData';
 
@@ -63,69 +63,75 @@ export function validateLocalLogin(username: string, password: string): User | n
   return user;
 }
 
-// ─── Instant PocketBase Connectivity Check (prevents 10s timeout delays) ─────
-
-let pbConnected: boolean | null = null;
-
-async function isPBOnline(): Promise<boolean> {
-  if (pbConnected !== null) return pbConnected;
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 400);
-    const res = await fetch(`${pb.baseUrl}/api/health`, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    pbConnected = res.ok;
-  } catch {
-    pbConnected = false;
-  }
-  return pbConnected;
+// Helper to expand task assigned_to user
+function expandTask(task: Task, userList: User[]): Task {
+  const assigned = userList.find((u) => u.id === task.assigned_to);
+  return {
+    ...task,
+    expand: { assigned_to: assigned },
+  };
 }
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
 
 export async function fetchTasks(): Promise<Task[]> {
-  if (await isPBOnline()) {
-    try {
-      const records = await pb.collection('tasks').getFullList({
-        sort: '-created',
-        expand: 'assigned_to',
-      });
-      return records as unknown as Task[];
-    } catch {
-      // Fallback
+  try {
+    const { data: usersData } = await supabase.from('users').select('*');
+    const userList = usersData && usersData.length > 0 ? (usersData as User[]) : localUsers;
+
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .order('created', { ascending: false });
+
+    if (!error && data) {
+      const tasks = data.map((t) => expandTask(t as Task, userList));
+      localTasks = tasks;
+      saveLocalState();
+      return tasks;
     }
+  } catch {
+    // Fallback
   }
   return localTasks;
 }
 
 export async function fetchTasksByMember(memberId: string): Promise<Task[]> {
-  if (await isPBOnline()) {
-    try {
-      const records = await pb.collection('tasks').getFullList({
-        filter: `assigned_to = "${memberId}"`,
-        sort: '-created',
-        expand: 'assigned_to',
-      });
-      return records as unknown as Task[];
-    } catch {
-      // Fallback
+  try {
+    const { data: usersData } = await supabase.from('users').select('*');
+    const userList = usersData && usersData.length > 0 ? (usersData as User[]) : localUsers;
+
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('assigned_to', memberId)
+      .order('created', { ascending: false });
+
+    if (!error && data) {
+      return data.map((t) => expandTask(t as Task, userList));
     }
+  } catch {
+    // Fallback
   }
   return localTasks.filter((t) => t.assigned_to === memberId);
 }
 
 export async function fetchTasksByStatus(status: TaskStatus): Promise<Task[]> {
-  if (await isPBOnline()) {
-    try {
-      const records = await pb.collection('tasks').getFullList({
-        filter: `status = "${status}"`,
-        sort: '-created',
-        expand: 'assigned_to',
-      });
-      return records as unknown as Task[];
-    } catch {
-      // Fallback
+  try {
+    const { data: usersData } = await supabase.from('users').select('*');
+    const userList = usersData && usersData.length > 0 ? (usersData as User[]) : localUsers;
+
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('status', status)
+      .order('created', { ascending: false });
+
+    if (!error && data) {
+      return data.map((t) => expandTask(t as Task, userList));
     }
+  } catch {
+    // Fallback
   }
   return localTasks.filter((t) => t.status === status);
 }
@@ -135,27 +141,9 @@ export async function createTask(data: {
   body: string;
   assigned_to: string;
 }): Promise<Task> {
-  if (await isPBOnline()) {
-    try {
-      const record = await pb.collection('tasks').create({
-        ...data,
-        status: 'assigned',
-        member_verdict: '',
-        admin_verdict: '',
-        admin_notes: '',
-        payment_status: 'not_applicable',
-        payment_amount_usd: 0,
-      });
-      const full = await pb.collection('tasks').getOne(record.id, { expand: 'assigned_to' });
-      return full as unknown as Task;
-    } catch {
-      // Fallback
-    }
-  }
-
-  const assignedUser = localUsers.find((u) => u.id === data.assigned_to);
+  const taskId = 'task_' + Date.now();
   const newTask: Task = {
-    id: 'task_' + Date.now(),
+    id: taskId,
     task_id: data.task_id,
     body: data.body,
     assigned_to: data.assigned_to,
@@ -170,22 +158,48 @@ export async function createTask(data: {
     payment_date: '',
     created: new Date().toISOString(),
     updated: new Date().toISOString(),
-    expand: { assigned_to: assignedUser },
   };
+
+  try {
+    const { error } = await supabase.from('tasks').insert([newTask]);
+    if (!error) {
+      const expanded = expandTask(newTask, localUsers);
+      localTasks.unshift(expanded);
+      saveLocalState();
+      return expanded;
+    }
+  } catch {
+    // Fallback
+  }
+
+  const assignedUser = localUsers.find((u) => u.id === data.assigned_to);
+  newTask.expand = { assigned_to: assignedUser };
   localTasks.unshift(newTask);
   saveLocalState();
   return newTask;
 }
 
 export async function updateTask(id: string, data: Partial<Task>): Promise<Task> {
-  if (await isPBOnline()) {
-    try {
-      const record = await pb.collection('tasks').update(id, data);
-      const full = await pb.collection('tasks').getOne(record.id, { expand: 'assigned_to' });
-      return full as unknown as Task;
-    } catch {
-      // Fallback
+  const updatedFields = { ...data, updated: new Date().toISOString() };
+  delete updatedFields.expand;
+
+  try {
+    const { data: updatedData, error } = await supabase
+      .from('tasks')
+      .update(updatedFields)
+      .eq('id', id)
+      .select('*')
+      .single();
+
+    if (!error && updatedData) {
+      const expanded = expandTask(updatedData as Task, localUsers);
+      const idx = localTasks.findIndex((t) => t.id === id);
+      if (idx !== -1) localTasks[idx] = expanded;
+      saveLocalState();
+      return expanded;
     }
+  } catch {
+    // Fallback
   }
 
   const idx = localTasks.findIndex((t) => t.id === id);
@@ -206,24 +220,20 @@ export async function updateTask(id: string, data: Partial<Task>): Promise<Task>
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  if (await isPBOnline()) {
-    try {
-      await pb.collection('tasks').delete(id);
-    } catch {
-      // Fallback
-    }
+  try {
+    await supabase.from('tasks').delete().eq('id', id);
+  } catch {
+    // Fallback
   }
   localTasks = localTasks.filter((t) => t.id !== id);
   saveLocalState();
 }
 
 export async function deleteTasks(ids: string[]): Promise<void> {
-  if (await isPBOnline()) {
-    try {
-      await Promise.all(ids.map((id) => pb.collection('tasks').delete(id)));
-    } catch {
-      // Fallback
-    }
+  try {
+    await supabase.from('tasks').delete().in('id', ids);
+  } catch {
+    // Fallback
   }
   localTasks = localTasks.filter((t) => !ids.includes(t.id));
   saveLocalState();
@@ -232,25 +242,23 @@ export async function deleteTasks(ids: string[]): Promise<void> {
 export async function checkDuplicateTaskId(
   taskId: string
 ): Promise<{ isDuplicate: boolean; existingTask?: Task; assignedToName?: string }> {
-  if (await isPBOnline()) {
-    try {
-      const records = await pb.collection('tasks').getFullList({
-        filter: `task_id = "${taskId}"`,
-        expand: 'assigned_to',
-      });
-      if (records.length > 0) {
-        const existing = records[0] as unknown as Task;
-        const assignedTo = existing.expand?.assigned_to;
-        return {
-          isDuplicate: true,
-          existingTask: existing,
-          assignedToName: assignedTo?.name || 'Unknown',
-        };
-      }
-      return { isDuplicate: false };
-    } catch {
-      // Fallback
+  try {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .ilike('task_id', taskId.trim());
+
+    if (!error && data && data.length > 0) {
+      const existing = data[0] as Task;
+      const assignedTo = localUsers.find((u) => u.id === existing.assigned_to);
+      return {
+        isDuplicate: true,
+        existingTask: existing,
+        assignedToName: assignedTo?.name || 'Unknown Member',
+      };
     }
+  } catch {
+    // Fallback
   }
 
   const existing = localTasks.find(
@@ -268,28 +276,38 @@ export async function checkDuplicateTaskId(
 // ─── Users / Members ─────────────────────────────────────────────────────────
 
 export async function fetchMembers(): Promise<User[]> {
-  if (await isPBOnline()) {
-    try {
-      const records = await pb.collection('users').getFullList({
-        filter: 'role = "member"',
-        sort: 'name',
-      });
-      return deduplicateUsers(records as unknown as User[]);
-    } catch {
-      // Fallback
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('role', 'member')
+      .order('name');
+
+    if (!error && data && data.length > 0) {
+      localUsers = deduplicateUsers(data as User[]);
+      saveLocalState();
+      return localUsers.filter((u) => u.role === 'member');
     }
+  } catch {
+    // Fallback
   }
   return deduplicateUsers(localUsers.filter((u) => u.role === 'member'));
 }
 
 export async function fetchAllUsers(): Promise<User[]> {
-  if (await isPBOnline()) {
-    try {
-      const records = await pb.collection('users').getFullList({ sort: 'name' });
-      return deduplicateUsers(records as unknown as User[]);
-    } catch {
-      // Fallback
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('name');
+
+    if (!error && data && data.length > 0) {
+      localUsers = deduplicateUsers(data as User[]);
+      saveLocalState();
+      return localUsers;
     }
+  } catch {
+    // Fallback
   }
   return deduplicateUsers(localUsers);
 }
@@ -302,23 +320,40 @@ export async function createUser(data: {
   role: string;
   email?: string;
 }): Promise<User> {
-  if (await isPBOnline()) {
-    try {
-      const record = await pb.collection('users').create({
-        ...data,
-        is_active: true,
-        emailVisibility: true,
-      });
-      return record as unknown as User;
-    } catch {
-      // Fallback
-    }
-  }
-
-  // Deduplicate by username in offline mode
   const cleanUsername = data.username.trim().toLowerCase();
+  const userId = 'user_' + Date.now();
+
+  const newUser: User = {
+    id: userId,
+    username: data.username.trim(),
+    email: data.email || `${data.username.trim()}@agnus.local`,
+    name: data.name.trim(),
+    role: data.role as 'admin' | 'member',
+    avatar: '',
+    is_active: true,
+    created: new Date().toISOString(),
+    updated: new Date().toISOString(),
+  };
+
   if (data.password) {
     localPasswords[cleanUsername] = data.password.trim();
+  }
+
+  try {
+    const { data: createdData, error } = await supabase
+      .from('users')
+      .insert([{ ...newUser, password: data.password }])
+      .select('*')
+      .single();
+
+    if (!error && createdData) {
+      const u = createdData as User;
+      localUsers.push(u);
+      saveLocalState();
+      return u;
+    }
+  } catch {
+    // Fallback
   }
 
   const existingIdx = localUsers.findIndex(
@@ -336,17 +371,6 @@ export async function createUser(data: {
     return updated;
   }
 
-  const newUser: User = {
-    id: 'user_' + Date.now(),
-    username: data.username.trim(),
-    email: data.email || `${data.username.trim()}@agnus.local`,
-    name: data.name.trim(),
-    role: data.role as 'admin' | 'member',
-    avatar: '',
-    is_active: true,
-    created: new Date().toISOString(),
-    updated: new Date().toISOString(),
-  };
   localUsers.push(newUser);
   saveLocalState();
   return newUser;
@@ -356,13 +380,23 @@ export async function updateUser(
   id: string,
   data: Partial<User> & { password?: string; passwordConfirm?: string }
 ): Promise<User> {
-  if (await isPBOnline()) {
-    try {
-      const record = await pb.collection('users').update(id, data);
-      return record as unknown as User;
-    } catch {
-      // Fallback
+  try {
+    const { data: updatedData, error } = await supabase
+      .from('users')
+      .update(data)
+      .eq('id', id)
+      .select('*')
+      .single();
+
+    if (!error && updatedData) {
+      const u = updatedData as User;
+      const idx = localUsers.findIndex((x) => x.id === id);
+      if (idx !== -1) localUsers[idx] = u;
+      saveLocalState();
+      return u;
     }
+  } catch {
+    // Fallback
   }
 
   const idx = localUsers.findIndex((u) => u.id === id);
@@ -379,12 +413,10 @@ export async function updateUser(
 }
 
 export async function deleteUser(id: string): Promise<void> {
-  if (await isPBOnline()) {
-    try {
-      await pb.collection('users').delete(id);
-    } catch {
-      // Fallback
-    }
+  try {
+    await supabase.from('users').delete().eq('id', id);
+  } catch {
+    // Fallback
   }
   localUsers = localUsers.filter((u) => u.id !== id);
   saveLocalState();
@@ -393,13 +425,15 @@ export async function deleteUser(id: string): Promise<void> {
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export async function fetchSettings(): Promise<AppSettings> {
-  if (await isPBOnline()) {
-    try {
-      const records = await pb.collection('settings').getFullList();
-      if (records.length > 0) return records[0] as unknown as AppSettings;
-    } catch {
-      // Fallback
+  try {
+    const { data, error } = await supabase.from('settings').select('*').limit(1);
+    if (!error && data && data.length > 0) {
+      localSettings = data[0] as AppSettings;
+      saveLocalState();
+      return localSettings;
     }
+  } catch {
+    // Fallback
   }
   return localSettings;
 }
@@ -408,18 +442,20 @@ export async function updateSettings(
   id: string,
   data: Partial<AppSettings>
 ): Promise<AppSettings> {
-  if (await isPBOnline()) {
-    try {
-      if (id) {
-        const record = await pb.collection('settings').update(id, data);
-        return record as unknown as AppSettings;
-      } else {
-        const record = await pb.collection('settings').create(data);
-        return record as unknown as AppSettings;
-      }
-    } catch {
-      // Fallback
+  try {
+    const { data: updatedData, error } = await supabase
+      .from('settings')
+      .upsert([{ id: id || 'settings_1', ...data, updated: new Date().toISOString() }])
+      .select('*')
+      .single();
+
+    if (!error && updatedData) {
+      localSettings = updatedData as AppSettings;
+      saveLocalState();
+      return localSettings;
     }
+  } catch {
+    // Fallback
   }
 
   localSettings = { ...localSettings, ...data, updated: new Date().toISOString() };
@@ -446,6 +482,15 @@ export function importLocalBackup(jsonStr: string): { tasks: Task[]; users: User
   if (parsed.passwords && typeof parsed.passwords === 'object') localPasswords = parsed.passwords;
   if (parsed.settings && typeof parsed.settings === 'object') localSettings = parsed.settings;
   saveLocalState();
+
+  // Sync imported data to Supabase Cloud
+  try {
+    supabase.from('users').upsert(localUsers).then(() => {});
+    supabase.from('tasks').upsert(localTasks).then(() => {});
+  } catch {
+    // Ignore
+  }
+
   return { tasks: localTasks, users: localUsers, settings: localSettings };
 }
 
@@ -453,9 +498,16 @@ export function importLocalBackup(jsonStr: string): { tasks: Task[]; users: User
 
 export function subscribeToTasks(callback: (data: { action: string; record: Task }) => void) {
   try {
-    return pb.collection('tasks').subscribe('*', (e) => {
-      callback({ action: e.action, record: e.record as unknown as Task });
-    });
+    const channel = supabase
+      .channel('public:tasks')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
+        callback({ action: payload.eventType, record: payload.new as Task });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   } catch {
     return () => {};
   }
@@ -463,7 +515,7 @@ export function subscribeToTasks(callback: (data: { action: string; record: Task
 
 export function unsubscribeFromTasks() {
   try {
-    pb.collection('tasks').unsubscribe('*');
+    supabase.removeAllChannels();
   } catch {
     // Ignore
   }
