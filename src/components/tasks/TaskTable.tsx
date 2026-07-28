@@ -340,15 +340,16 @@ export default function TaskTable({
           <button
             className="btn btn-secondary btn-sm"
             onClick={() => setReassignModalOpen(true)}
-            style={{ color: 'white', borderColor: 'rgba(255,255,255,0.2)' }}
+            style={{ background: 'white', color: 'var(--color-text-primary)', border: 'none', fontWeight: 'var(--weight-semibold)' }}
           >
             <ArrowRightLeft size={14} />
             {t('tasks.bulk_reassign')}
           </button>
           <button
-            className="btn btn-ghost btn-sm"
+            className="btn btn-ghost btn-icon btn-sm"
             onClick={clearSelection}
-            style={{ color: 'rgba(255,255,255,0.6)' }}
+            style={{ color: '#FFFFFF', opacity: 0.8 }}
+            title="Clear Selection"
           >
             ✕
           </button>
