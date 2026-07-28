@@ -279,19 +279,65 @@ export async function createTask(data: {
   return newTask;
 }
 
-export async function updateTask(id: string, data: Partial<Task>): Promise<Task> {
+export interface TaskUpdateGuard {
+  expectedStatus: TaskStatus;
+  expectedAssignee?: string;
+}
+
+export class TaskConflictError extends Error {
+  latestTask: Task | null | undefined;
+
+  constructor(latestTask: Task | null | undefined) {
+    super('Task changed on another device');
+    this.name = 'TaskConflictError';
+    this.latestTask = latestTask;
+  }
+}
+
+export async function updateTask(
+  id: string,
+  data: Partial<Task>,
+  guard?: TaskUpdateGuard
+): Promise<Task> {
   const updatedFields = { ...data, updated: new Date().toISOString() };
   delete updatedFields.expand;
 
   try {
-    const { data: updatedData, error } = await supabase
+    let updateQuery = supabase
       .from('tasks')
       .update(updatedFields)
-      .eq('id', id)
-      .select('*')
-      .single();
+      .eq('id', id);
+
+    if (guard) {
+      updateQuery = updateQuery.eq('status', guard.expectedStatus);
+      if (guard.expectedAssignee) {
+        updateQuery = updateQuery.eq('assigned_to', guard.expectedAssignee);
+      }
+    }
+
+    const { data: updatedData, error } = await updateQuery.select('*').maybeSingle();
 
     if (error) throw error;
+    if (!updatedData && guard) {
+      const { data: latestData, error: latestError } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      const latestTask = latestError
+        ? undefined
+        : latestData
+          ? expandTask(latestData as Task, localUsers)
+          : null;
+      if (latestTask) {
+        const latestIndex = localTasks.findIndex((task) => task.id === id);
+        if (latestIndex === -1) localTasks.unshift(latestTask);
+        else localTasks[latestIndex] = latestTask;
+        saveLocalState();
+      }
+      throw new TaskConflictError(latestTask);
+    }
+    if (!updatedData) throw new Error('Task not found');
     if (updatedData) {
       const expanded = expandTask(updatedData as Task, localUsers);
       const idx = localTasks.findIndex((t) => t.id === id);
@@ -300,11 +346,21 @@ export async function updateTask(id: string, data: Partial<Task>): Promise<Task>
       return expanded;
     }
   } catch (error) {
+    if (error instanceof TaskConflictError) throw error;
     if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Updating task', error);
   }
 
   const idx = localTasks.findIndex((t) => t.id === id);
   if (idx !== -1) {
+    if (
+      guard &&
+      (
+        localTasks[idx].status !== guard.expectedStatus ||
+        (guard.expectedAssignee && localTasks[idx].assigned_to !== guard.expectedAssignee)
+      )
+    ) {
+      throw new TaskConflictError(localTasks[idx]);
+    }
     const updated: Task = {
       ...localTasks[idx],
       ...data,

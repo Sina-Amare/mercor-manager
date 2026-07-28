@@ -4,7 +4,7 @@ import { STATUS_CONFIG, type Task, type TaskStatus } from '../../types';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../../store';
 import StatusBadge from '../shared/StatusBadge';
 import DateDisplay from '../shared/DateDisplay';
-import { updateTask as apiUpdateTask } from '../../api/tasks';
+import { TaskConflictError, updateTask as apiUpdateTask } from '../../api/tasks';
 import { formatCurrency, formatNumber, usdToIrr } from '../../utils/dates';
 
 interface Props {
@@ -16,7 +16,7 @@ interface Props {
 export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: Props) {
   const { user } = useAuthStore();
   const { t, language } = useLanguageStore();
-  const { updateTask, settings, members } = useAppStore();
+  const { updateTask, removeTask, settings, members } = useAppStore();
   const { addToast } = useToastStore();
   const isAdmin = user?.role === 'admin';
   const isMember = user?.role === 'member';
@@ -73,11 +73,24 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
       if (newStatus === 'approved') {
         data.payment_status = 'pending';
       }
-      const updated = await apiUpdateTask(task.id, data);
+      const updated = await apiUpdateTask(task.id, data, {
+        expectedStatus: task.status,
+        expectedAssignee: isMember ? user?.id : undefined,
+      });
       updateTask(task.id, updated);
       addToast(`Task status updated to ${newStatus.toUpperCase()}`, 'success');
-    } catch {
-      addToast('Failed to update task', 'error');
+    } catch (error) {
+      if (error instanceof TaskConflictError) {
+        if (error.latestTask) {
+          updateTask(task.id, error.latestTask);
+        } else if (error.latestTask === null) {
+          removeTask(task.id);
+          onClose();
+        }
+        addToast(t('tasks.conflict'), 'warning');
+      } else {
+        addToast('Failed to update task', 'error');
+      }
     } finally {
       setSaving(false);
       setConfirmingAction(null);
@@ -157,11 +170,28 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
   const handleReassign = async (newMemberId: string) => {
     setSaving(true);
     try {
-      const updated = await apiUpdateTask(task.id, { assigned_to: newMemberId } as Partial<Task>);
+      const updated = await apiUpdateTask(
+        task.id,
+        { assigned_to: newMemberId } as Partial<Task>,
+        {
+          expectedStatus: task.status,
+          expectedAssignee: task.assigned_to,
+        }
+      );
       updateTask(task.id, updated);
       addToast('Task reassigned successfully', 'success');
-    } catch {
-      addToast('Failed to reassign task', 'error');
+    } catch (error) {
+      if (error instanceof TaskConflictError) {
+        if (error.latestTask) {
+          updateTask(task.id, error.latestTask);
+        } else if (error.latestTask === null) {
+          removeTask(task.id);
+          onClose();
+        }
+        addToast(t('tasks.conflict'), 'warning');
+      } else {
+        addToast('Failed to reassign task', 'error');
+      }
     } finally {
       setSaving(false);
     }

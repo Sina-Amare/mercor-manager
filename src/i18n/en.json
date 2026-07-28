@@ -92,7 +92,8 @@
     "select_all": "Select All",
     "selected": "selected",
     "bulk_delete": "Delete",
-    "bulk_reassign": "Reassign"
+    "bulk_reassign": "Reassign",
+    "conflict": "This task changed on another device. The latest version has been loaded."
   },
   "upload": {
     "title": "Upload Tasks",
