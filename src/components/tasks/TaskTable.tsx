@@ -7,7 +7,8 @@ import StatusBadge from '../shared/StatusBadge';
 import DateDisplay from '../shared/DateDisplay';
 import TaskDetailPanel from './TaskDetailPanel';
 import { deleteTask, deleteTasks, updateTasks as apiUpdateTasks } from '../../api/tasks';
-import { formatCurrency, usdToIrr } from '../../utils/dates';
+import { formatCurrency, formatNumber, usdToIrr } from '../../utils/dates';
+import { useNavigate } from 'react-router-dom';
 
 interface Props {
   tasks: Task[];
@@ -33,6 +34,7 @@ export default function TaskTable({
   const { selectedTaskIds, toggleTaskSelection, selectAllTasks, clearSelection, setTaskDetail, taskDetailId, removeTask, removeTasks, members, settings, updateTask } = useAppStore();
   const { addToast } = useToastStore();
   const isAdmin = user?.role === 'admin';
+  const navigate = useNavigate();
 
   const [search, setSearch] = useState('');
   const [activeStatusFilter, setActiveStatusFilter] = useState<string>('all');
@@ -199,7 +201,7 @@ export default function TaskTable({
           className={`filter-pill ${activeStatusFilter === 'all' ? 'active' : ''}`}
           onClick={() => setActiveStatusFilter('all')}
         >
-          {t('nav.all_tasks')} ({inputTasks.length})
+          {t('nav.all_tasks')} ({formatNumber(inputTasks.length, language)})
         </button>
         {TASK_STATUSES.map((statusKey) => {
           const count = inputTasks.filter((t) => t.status === statusKey).length;
@@ -211,7 +213,7 @@ export default function TaskTable({
               className={`filter-pill ${activeStatusFilter === statusKey ? 'active' : ''}`}
               onClick={() => setActiveStatusFilter(statusKey)}
             >
-              {conf.icon} {language === 'fa' ? conf.labelFa : conf.label} ({count})
+              {conf.icon} {language === 'fa' ? conf.labelFa : conf.label} ({formatNumber(count, language)})
             </button>
           );
         })}
@@ -230,7 +232,8 @@ export default function TaskTable({
           </div>
           <div className="data-table-filters">
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontWeight: 'var(--weight-medium)' }}>
-              {t('common.showing')} {filteredTasks.length} {t('common.of')} {inputTasks.length}
+              {t('common.showing')} {formatNumber(filteredTasks.length, language)} {t('common.of')}{' '}
+              {formatNumber(inputTasks.length, language)}
             </span>
           </div>
         </div>
@@ -285,7 +288,24 @@ export default function TaskTable({
               {filteredTasks.map((task) => (
                 <tr
                   key={task.id}
-                  className={activeSelectedTaskIds.includes(task.id) ? 'selected' : ''}
+                  className={`${activeSelectedTaskIds.includes(task.id) ? 'selected' : ''} ${
+                    !isAdmin ? 'clickable-row' : ''
+                  }`}
+                  tabIndex={!isAdmin ? 0 : undefined}
+                  onClick={(event) => {
+                    if (
+                      !isAdmin &&
+                      !(event.target as HTMLElement).closest('button, input, a, select')
+                    ) {
+                      navigate(`/task/${task.id}`);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (!isAdmin && (event.key === 'Enter' || event.key === ' ')) {
+                      event.preventDefault();
+                      navigate(`/task/${task.id}`);
+                    }
+                  }}
                 >
                   {isAdmin && showActions && (
                     <td>
@@ -321,11 +341,11 @@ export default function TaskTable({
                     {task.payment_amount_usd > 0 ? (
                       <div>
                         <span className="payment-amount">
-                          {formatCurrency(task.payment_amount_usd, 'USD')}
+                          {formatCurrency(task.payment_amount_usd, 'USD', language)}
                         </span>
                         <br />
                         <span className="payment-amount-irr">
-                          {formatCurrency(usdToIrr(task.payment_amount_usd, settings.usd_to_irr_rate), 'IRR')}
+                          {formatCurrency(usdToIrr(task.payment_amount_usd, settings.usd_to_irr_rate), 'IRR', language)}
                         </span>
                       </div>
                     ) : (
@@ -338,7 +358,13 @@ export default function TaskTable({
                         <button
                           className="btn btn-ghost btn-icon btn-sm"
                           title={t('tasks.view_detail')}
-                          onClick={() => setTaskDetail(task.id)}
+                          onClick={() => {
+                            if (isAdmin) {
+                              setTaskDetail(task.id);
+                            } else {
+                              navigate(`/task/${task.id}`);
+                            }
+                          }}
                         >
                           <Eye size={16} />
                         </button>
@@ -366,7 +392,7 @@ export default function TaskTable({
       {activeSelectedTaskIds.length > 0 && isAdmin && (
         <div className="bulk-bar">
           <span className="bulk-bar-count">
-            {activeSelectedTaskIds.length} {t('tasks.selected')}
+            {formatNumber(activeSelectedTaskIds.length, language)} {t('tasks.selected')}
           </span>
           <button className="btn btn-danger btn-sm" onClick={() => setShowBulkDeleteModal(true)}>
             <Trash2 size={14} />

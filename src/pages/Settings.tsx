@@ -3,9 +3,10 @@ import { UserPlus, Save, Loader2, Trash2, Edit2, AlertCircle, Eye, EyeOff, Downl
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../store';
 import { createUser, updateUser as apiUpdateUser, deleteUser as apiDeleteUser, updateSettings, exportLocalBackup, importLocalBackup } from '../api/tasks';
 import type { User } from '../types';
+import { formatNumber } from '../utils/dates';
 
 export default function Settings() {
-  const { t } = useLanguageStore();
+  const { t, language } = useLanguageStore();
   const { user: currentUser, updateUser: updateCurrentUser } = useAuthStore();
   const { members, settings, setSettings, addMember, updateMember, removeMember, tasks, setTasks, setMembers } = useAppStore();
   const { addToast } = useToastStore();
@@ -318,8 +319,8 @@ export default function Settings() {
                   disabled={editingUser?.id === currentUser?.id}
                   title={editingUser?.id === currentUser?.id ? 'You cannot change your own role' : undefined}
                 >
-                  <option value="member">Member</option>
-                  <option value="admin">Admin</option>
+                  <option value="member">{t('members.member_role')}</option>
+                  <option value="admin">{t('members.admin_role')}</option>
                 </select>
               </div>
             </div>
@@ -358,7 +359,7 @@ export default function Settings() {
                         {member.name}
                       </div>
                     </td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
+                    <td className="latin-text" style={{ fontSize: 'var(--text-xs)' }}>
                       @{member.username}
                     </td>
                     <td>
@@ -369,10 +370,10 @@ export default function Settings() {
                           background: member.role === 'admin' ? 'var(--color-purple-bg)' : 'var(--color-primary-50)',
                         }}
                       >
-                        {member.role === 'admin' ? 'Admin' : 'Member'}
+                        {member.role === 'admin' ? t('members.admin_role') : t('members.member_role')}
                       </span>
                     </td>
-                    <td>{taskCount} tasks</td>
+                    <td>{formatNumber(taskCount, language)} {t('members.task_count')}</td>
                     <td>
                       <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
                         <button className="btn btn-ghost btn-sm" onClick={() => handleEditUser(member)}>

@@ -2,16 +2,17 @@ import { useParams } from 'react-router-dom';
 import { useLanguageStore, useAppStore, useAuthStore } from '../store';
 import TaskTable from '../components/tasks/TaskTable';
 import { TASK_STATUSES, type TaskStatus } from '../types';
+import { formatNumber } from '../utils/dates';
 
 interface Props {
   fixedStatus?: TaskStatus;
-  fixedStatuses?: TaskStatus[];
+  fixedStatuses?: readonly TaskStatus[];
   titleKey?: string;
 }
 
 export default function StatusView({ fixedStatus, fixedStatuses, titleKey }: Props) {
   const { status } = useParams<{ status: string }>();
-  const { t } = useLanguageStore();
+  const { t, language } = useLanguageStore();
   const { user } = useAuthStore();
   const { tasks } = useAppStore();
   const isAdmin = user?.role === 'admin';
@@ -35,7 +36,7 @@ export default function StatusView({ fixedStatus, fixedStatuses, titleKey }: Pro
     <TaskTable
       tasks={filteredTasks}
       title={statusLabel}
-      subtitle={`${filteredTasks.length} ${t('common.total')}`}
+      subtitle={`${formatNumber(filteredTasks.length, language)} ${t('common.total')}`}
       showMember={isAdmin}
     />
   );

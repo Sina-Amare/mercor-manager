@@ -18,10 +18,11 @@ import {
 import { useAuthStore, useLanguageStore, useAppStore } from '../../store';
 import { logout } from '../../api/auth';
 import { useState } from 'react';
+import { formatNumber } from '../../utils/dates';
 
 export default function Sidebar() {
   const { user } = useAuthStore();
-  const { t } = useLanguageStore();
+  const { t, language } = useLanguageStore();
   const { sidebarOpen, setSidebarOpen, members, tasks } = useAppStore();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
@@ -53,7 +54,7 @@ export default function Sidebar() {
       <button
         className="sidebar-mobile-toggle btn btn-icon btn-ghost"
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}
+        aria-label={sidebarOpen ? t('common.close_navigation') : t('common.open_navigation')}
         aria-expanded={sidebarOpen}
       >
         {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
@@ -63,7 +64,7 @@ export default function Sidebar() {
         <button
           type="button"
           className="sidebar-backdrop"
-          aria-label="Close navigation"
+          aria-label={t('common.close_navigation')}
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -71,7 +72,7 @@ export default function Sidebar() {
       <aside
         className={`sidebar ${sidebarOpen ? 'open' : ''}`}
         onClick={handleSidebarClick}
-        aria-label="Primary navigation"
+        aria-label={t('common.primary_navigation')}
       >
         {/* Brand Header */}
         <div className="sidebar-logo">
@@ -104,7 +105,7 @@ export default function Sidebar() {
                   <NavLink to="/tasks" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                     <ListTodo size={18} className="sidebar-link-icon" />
                     {t('nav.all_tasks')}
-                    <span className="sidebar-link-badge">{tasks.length}</span>
+                    <span className="sidebar-link-badge">{formatNumber(tasks.length, language)}</span>
                   </NavLink>
                 </li>
               </ul>
@@ -131,7 +132,9 @@ export default function Sidebar() {
                       >
                         <Users size={18} className="sidebar-link-icon" />
                         {member.name}
-                        <span className="sidebar-link-badge">{getMemberTaskCount(member.id)}</span>
+                        <span className="sidebar-link-badge">
+                          {formatNumber(getMemberTaskCount(member.id), language)}
+                        </span>
                       </NavLink>
                     </li>
                   ))}
@@ -175,7 +178,10 @@ export default function Sidebar() {
                     <ClipboardList size={18} className="sidebar-link-icon" />
                     {t('nav.my_tasks')}
                     <span className="sidebar-link-badge">
-                      {tasks.filter((t) => t.assigned_to === user?.id && t.status === 'assigned').length}
+                      {formatNumber(
+                        tasks.filter((t) => t.assigned_to === user?.id).length,
+                        language
+                      )}
                     </span>
                   </NavLink>
                 </li>
@@ -184,11 +190,16 @@ export default function Sidebar() {
                     <Hammer size={18} className="sidebar-link-icon" />
                     {t('nav.working')}
                     <span className="sidebar-link-badge">
-                      {tasks.filter(
-                        (t) =>
-                          t.assigned_to === user?.id &&
-                          (t.status === 'working' || t.status === 'sent_back')
-                      ).length}
+                      {formatNumber(
+                        tasks.filter(
+                          (t) =>
+                            t.assigned_to === user?.id &&
+                            ['working', 'sent_back', 'swf', 'swof', 'member_discarded'].includes(
+                              t.status
+                            )
+                        ).length,
+                        language
+                      )}
                     </span>
                   </NavLink>
                 </li>
@@ -223,7 +234,7 @@ export default function Sidebar() {
             <div className="sidebar-user-info">
               <div className="sidebar-user-name">{user?.name}</div>
               <div className="sidebar-user-role">
-                {user?.role === 'admin' ? 'Admin' : 'Member'}
+                {user?.role === 'admin' ? t('members.admin_role') : t('members.member_role')}
               </div>
             </div>
             <LogOut size={16} style={{ opacity: 0.5 }} />
@@ -239,13 +250,13 @@ export default function Sidebar() {
             <div className="modal-header">
               <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <AlertCircle size={20} style={{ color: 'var(--color-primary)' }} />
-                Log Out of {t('app_name')}?
+                {t('common.logout_title')}
               </h3>
               <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowLogoutModal(false)}>✕</button>
             </div>
             <div className="modal-body">
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
-                Are you sure you want to log out of your session as <strong>{user?.name}</strong> (@{user?.username})?
+                {t('common.logout_question')}
               </p>
             </div>
             <div className="modal-footer">
@@ -254,7 +265,7 @@ export default function Sidebar() {
               </button>
               <button className="btn btn-primary" onClick={confirmLogout} style={{ background: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}>
                 <LogOut size={16} />
-                Log Out
+                {t('nav.logout')}
               </button>
             </div>
           </div>

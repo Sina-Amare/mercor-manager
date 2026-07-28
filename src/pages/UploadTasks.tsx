@@ -19,6 +19,7 @@ export default function UploadTasks() {
   const [dupMessage, setDupMessage] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latestCheckRef = useRef('');
+  const submissionLockRef = useRef(false);
   const assignableMembers = members.filter(
     (member) => member.role === 'member' && member.is_active
   );
@@ -91,6 +92,8 @@ export default function UploadTasks() {
   };
 
   const handleConfirmUpload = async () => {
+    if (submissionLockRef.current) return;
+    submissionLockRef.current = true;
     setShowConfirmModal(false);
     setLoading(true);
     try {
@@ -116,6 +119,7 @@ export default function UploadTasks() {
       const message = err instanceof Error ? err.message : 'Failed to create task';
       addToast(message, 'error');
     } finally {
+      submissionLockRef.current = false;
       setLoading(false);
     }
   };

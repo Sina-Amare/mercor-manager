@@ -19,7 +19,7 @@
     "settings": "Settings",
     "my_dashboard": "My Dashboard",
     "my_tasks": "My Tasks",
-    "working": "Working",
+    "working": "Working & Submitted",
     "my_history": "My History",
     "my_payments": "My Payments",
     "logout": "Logout",
@@ -123,7 +123,10 @@
     "username": "Username",
     "password": "Password",
     "role": "Role",
-    "active": "Active"
+    "active": "Active",
+    "admin_role": "Admin",
+    "member_role": "Member",
+    "task_count": "tasks"
   },
   "payments": {
     "title": "Payments",
@@ -160,6 +163,14 @@
     "no": "No",
     "of": "of",
     "total": "Total",
-    "showing": "Showing"
+    "showing": "Showing",
+    "open_navigation": "Open navigation",
+    "close_navigation": "Close navigation",
+    "primary_navigation": "Primary navigation",
+    "use_english": "Use English",
+    "use_persian": "Use Persian",
+    "logout_title": "Log out of AGNUS?",
+    "logout_question": "Are you sure you want to log out of this account?",
+    "back": "Back"
   }
 }

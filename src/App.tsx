@@ -4,6 +4,7 @@ import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from './st
 import { restoreSession } from './api/auth';
 import { fetchTasks, fetchAllUsers, fetchSettings, subscribeToTasks } from './api/tasks';
 import AppShell from './components/layout/AppShell';
+import { TASK_STATUSES } from './types';
 
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -13,6 +14,7 @@ const MemberView = lazy(() => import('./pages/MemberView'));
 const StatusView = lazy(() => import('./pages/StatusView'));
 const Payments = lazy(() => import('./pages/Payments'));
 const Settings = lazy(() => import('./pages/Settings'));
+const TaskWorkspace = lazy(() => import('./pages/TaskWorkspace'));
 
 function LoadingScreen() {
   return (
@@ -93,21 +95,44 @@ function AppContent() {
     if (!isAuthenticated) return;
 
     let active = true;
+    let refreshInFlight = false;
+    let refreshQueued = false;
+    let realtimeRevision = 0;
+
     const refreshTasks = async () => {
+      if (refreshInFlight) {
+        refreshQueued = true;
+        return;
+      }
+
+      refreshInFlight = true;
+      const revisionAtStart = realtimeRevision;
       try {
         const tasks = await fetchTasks();
-        if (active) setTasks(tasks);
+        // Do not overwrite a newer websocket event with an older request snapshot.
+        if (active && revisionAtStart === realtimeRevision) setTasks(tasks);
       } catch (error) {
-        console.error('Failed to refresh tasks after realtime reconnect:', error);
+        console.error('Failed to synchronize tasks:', error);
+      } finally {
+        refreshInFlight = false;
+        if (active && refreshQueued) {
+          refreshQueued = false;
+          void refreshTasks();
+        }
       }
     };
 
     const unsubscribe = subscribeToTasks(
       ({ eventType, newTask, oldTask }) => {
         if (!active) return;
+        realtimeRevision += 1;
         if (eventType === 'DELETE') {
           const deletedId = oldTask?.id;
-          if (deletedId) removeTask(deletedId);
+          if (deletedId) {
+            removeTask(deletedId);
+          } else {
+            void refreshTasks();
+          }
           return;
         }
         if (newTask) addTask(newTask);
@@ -117,16 +142,30 @@ function AppContent() {
           // Reconcile anything written between the initial fetch and subscription,
           // and anything missed during a reconnect.
           void refreshTasks();
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          void refreshTasks();
         }
       }
     );
 
     const handleFocus = () => void refreshTasks();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') void refreshTasks();
+    };
+    const syncTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshTasks();
+    }, 4000);
+
     window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       active = false;
+      window.clearInterval(syncTimer);
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
       unsubscribe();
     };
   }, [addTask, isAuthenticated, removeTask, setTasks]);
@@ -157,12 +196,21 @@ function AppContent() {
           {/* Shared Routes */}
           <Route path="/status/:status" element={<StatusView />} />
           <Route path="/payments" element={<Payments />} />
+          <Route path="/task/:taskId" element={<TaskWorkspace />} />
 
           {/* Member Routes */}
-          <Route path="/my-tasks" element={<StatusView fixedStatus="assigned" titleKey="nav.my_tasks" />} />
+          <Route
+            path="/my-tasks"
+            element={<StatusView fixedStatuses={TASK_STATUSES} titleKey="nav.my_tasks" />}
+          />
           <Route
             path="/working"
-            element={<StatusView fixedStatuses={['working', 'sent_back']} titleKey="nav.working" />}
+            element={
+              <StatusView
+                fixedStatuses={['working', 'sent_back', 'swf', 'swof', 'member_discarded']}
+                titleKey="nav.working"
+              />
+            }
           />
           <Route path="/my-history/:status" element={<StatusView />} />
           <Route path="/my-payments" element={<Payments />} />

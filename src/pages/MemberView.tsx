@@ -1,11 +1,11 @@
 import { useParams } from 'react-router-dom';
 import { useLanguageStore, useAppStore } from '../store';
 import TaskTable from '../components/tasks/TaskTable';
-import { formatCurrency, usdToIrr } from '../utils/dates';
+import { formatCurrency, formatNumber, usdToIrr } from '../utils/dates';
 
 export default function MemberView() {
   const { memberId } = useParams<{ memberId: string }>();
-  const { t } = useLanguageStore();
+  const { t, language } = useLanguageStore();
   const { tasks, members, settings, getMemberStats } = useAppStore();
 
   const member = members.find((m) => m.id === memberId);
@@ -32,7 +32,7 @@ export default function MemberView() {
             <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)' }}>
               {member.name}
             </h2>
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>
+            <p className="latin-text" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>
               @{member.username}
             </p>
           </div>
@@ -42,22 +42,22 @@ export default function MemberView() {
           <div className="stats-grid">
             <div className="stat-card">
               <span className="stat-card-label">{t('members.total_tasks')}</span>
-              <span className="stat-card-value">{stats.totalTasks}</span>
+              <span className="stat-card-value">{formatNumber(stats.totalTasks, language)}</span>
             </div>
             <div className="stat-card">
               <span className="stat-card-label">{t('members.approved_tasks')}</span>
-              <span className="stat-card-value" style={{ color: 'var(--color-success)' }}>{stats.approved}</span>
+              <span className="stat-card-value" style={{ color: 'var(--color-success)' }}>{formatNumber(stats.approved, language)}</span>
             </div>
             <div className="stat-card">
               <span className="stat-card-label">{t('dashboard.total_paid')}</span>
-              <span className="stat-card-value">{formatCurrency(stats.totalPaidUsd, 'USD')}</span>
+              <span className="stat-card-value">{formatCurrency(stats.totalPaidUsd, 'USD', language)}</span>
               <span className="payment-amount-irr">
-                {formatCurrency(usdToIrr(stats.totalPaidUsd, settings.usd_to_irr_rate), 'IRR')}
+                {formatCurrency(usdToIrr(stats.totalPaidUsd, settings.usd_to_irr_rate), 'IRR', language)}
               </span>
             </div>
             <div className="stat-card">
               <span className="stat-card-label">{t('dashboard.pending_payment')}</span>
-              <span className="stat-card-value">{formatCurrency(stats.totalPendingUsd, 'USD')}</span>
+              <span className="stat-card-value">{formatCurrency(stats.totalPendingUsd, 'USD', language)}</span>
             </div>
           </div>
         )}

@@ -2,7 +2,7 @@ import { useLanguageStore } from '../../store';
 import type { Language } from '../../types';
 
 export default function Header() {
-  const { language, setLanguage } = useLanguageStore();
+  const { language, setLanguage, t } = useLanguageStore();
 
   const handleLangChange = (lang: Language) => {
     setLanguage(lang);
@@ -19,7 +19,7 @@ export default function Header() {
             className={`header-lang-btn ${language === 'en' ? 'active' : ''}`}
             onClick={() => handleLangChange('en')}
             aria-pressed={language === 'en'}
-            aria-label="Use English"
+            aria-label={t('common.use_english')}
           >
             EN
           </button>
@@ -27,7 +27,7 @@ export default function Header() {
             className={`header-lang-btn ${language === 'fa' ? 'active' : ''}`}
             onClick={() => handleLangChange('fa')}
             aria-pressed={language === 'fa'}
-            aria-label="Use Persian"
+            aria-label={t('common.use_persian')}
             style={{ fontFamily: 'var(--font-fa)' }}
           >
             فا

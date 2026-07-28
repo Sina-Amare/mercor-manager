@@ -9,12 +9,12 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { useAuthStore, useLanguageStore, useAppStore } from '../store';
-import { formatCurrency, usdToIrr } from '../utils/dates';
+import { formatCurrency, formatNumber, usdToIrr } from '../utils/dates';
 import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
   const { user } = useAuthStore();
-  const { t } = useLanguageStore();
+  const { t, language } = useLanguageStore();
   const { tasks, members, settings } = useAppStore();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
@@ -88,7 +88,9 @@ export default function Dashboard() {
       <div className="page-header">
         <div>
           <h1 className="page-title">
-            {t('dashboard.welcome')}, {user?.name} 👋
+            {language === 'fa'
+              ? `${user?.name}، ${t('dashboard.welcome')} 👋`
+              : `${t('dashboard.welcome')}, ${user?.name} 👋`}
           </h1>
           <p className="page-subtitle">{t('dashboard.overview')}</p>
         </div>
@@ -105,7 +107,7 @@ export default function Dashboard() {
               <card.icon size={22} />
             </div>
             <span className="stat-card-label">{card.label}</span>
-            <span className="stat-card-value">{card.value}</span>
+            <span className="stat-card-value">{formatNumber(card.value, language)}</span>
           </div>
         ))}
       </div>
@@ -120,9 +122,9 @@ export default function Dashboard() {
             <DollarSign size={22} />
           </div>
           <span className="stat-card-label">{t('dashboard.total_paid')}</span>
-          <span className="stat-card-value">{formatCurrency(stats.totalPaidUsd, 'USD')}</span>
+          <span className="stat-card-value">{formatCurrency(stats.totalPaidUsd, 'USD', language)}</span>
           <span className="payment-amount-irr">
-            {formatCurrency(usdToIrr(stats.totalPaidUsd, settings.usd_to_irr_rate), 'IRR')}
+            {formatCurrency(usdToIrr(stats.totalPaidUsd, settings.usd_to_irr_rate), 'IRR', language)}
           </span>
         </div>
         <div className="stat-card">
@@ -133,9 +135,9 @@ export default function Dashboard() {
             <TrendingUp size={22} />
           </div>
           <span className="stat-card-label">{t('dashboard.pending_payment')}</span>
-          <span className="stat-card-value">{formatCurrency(stats.pendingPaymentUsd, 'USD')}</span>
+          <span className="stat-card-value">{formatCurrency(stats.pendingPaymentUsd, 'USD', language)}</span>
           <span className="payment-amount-irr">
-            {formatCurrency(usdToIrr(stats.pendingPaymentUsd, settings.usd_to_irr_rate), 'IRR')}
+            {formatCurrency(usdToIrr(stats.pendingPaymentUsd, settings.usd_to_irr_rate), 'IRR', language)}
           </span>
         </div>
       </div>
@@ -172,7 +174,7 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <div style={{ fontWeight: 'var(--weight-semibold)' }}>{member.name}</div>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+                      <div className="latin-text" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
                         @{member.username}
                       </div>
                     </div>
@@ -180,7 +182,7 @@ export default function Dashboard() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-2)', textAlign: 'center' }}>
                     <div>
                       <div style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)' }}>
-                        {memberTasks.length}
+                        {formatNumber(memberTasks.length, language)}
                       </div>
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
                         {t('members.total_tasks')}
@@ -188,7 +190,7 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <div style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', color: 'var(--color-success)' }}>
-                        {memberApproved}
+                        {formatNumber(memberApproved, language)}
                       </div>
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
                         {t('members.approved_tasks')}
@@ -196,7 +198,7 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <div style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', color: 'var(--color-primary)' }}>
-                        {memberPaid}
+                        {formatNumber(memberPaid, language)}
                       </div>
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
                         {t('members.paid_tasks')}

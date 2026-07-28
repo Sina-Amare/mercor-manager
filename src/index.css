@@ -4,7 +4,7 @@
    Warm Organic Cream Canvas • Editorial Typography • Rounded Pill UI
    ═══════════════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Vazirmatn:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap');
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -60,9 +60,10 @@
 
   /* ── Typography ── */
   --font-en: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-fa: 'Vazirmatn', 'Tahoma', sans-serif;
+  --font-fa: 'Vazirmatn Variable', 'Vazirmatn', 'Tahoma', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
   --font-family: var(--font-en);
+  --font-label: var(--font-mono);
 
   --text-xs: 0.75rem;       /* 12px */
   --text-sm: 0.84375rem;    /* 13.5px */
@@ -124,6 +125,7 @@
 
 [dir="rtl"] {
   --font-family: var(--font-fa);
+  --font-label: var(--font-fa);
 }
 
 /* ─── Global Reset ────────────────────────────────────────────────────────── */
@@ -140,6 +142,13 @@ body {
   color: var(--color-text-primary);
   background-color: var(--color-surface);
   min-height: 100vh;
+}
+
+[dir="rtl"] body {
+  font-size: 1rem;
+  line-height: 1.75;
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
 }
 
 #root {
@@ -168,7 +177,7 @@ textarea:focus-visible,
 
 /* ─── Eyebrow Label Style ─────────────────────────────────────────────────── */
 .eyebrow {
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 0.6875rem;
   font-weight: var(--weight-semibold);
   text-transform: uppercase;
@@ -187,6 +196,7 @@ textarea:focus-visible,
   margin-inline-start: var(--sidebar-width);
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 100vh;
   transition: margin var(--transition-slow);
 }
@@ -249,7 +259,7 @@ textarea:focus-visible,
 .sidebar-logo-sub {
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   display: block;
 }
 
@@ -258,7 +268,7 @@ textarea:focus-visible,
 }
 
 .sidebar-section-title {
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 0.6875rem;
   font-weight: var(--weight-semibold);
   text-transform: uppercase;
@@ -402,7 +412,7 @@ textarea:focus-visible,
 
 .sidebar-user-role {
   font-size: 0.6875rem;
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   color: var(--color-text-secondary);
 }
 
@@ -564,7 +574,7 @@ textarea:focus-visible,
 }
 
 .stat-card-label {
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 0.6875rem;
   font-weight: var(--weight-semibold);
   text-transform: uppercase;
@@ -700,7 +710,7 @@ textarea:focus-visible,
 }
 
 .form-label {
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 0.6875rem;
   font-weight: var(--weight-semibold);
   color: var(--color-text-secondary);
@@ -830,7 +840,7 @@ textarea:focus-visible,
 .data-table th {
   text-align: start;
   padding: var(--space-3) var(--space-4);
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-weight: var(--weight-semibold);
   font-size: 0.6875rem;
   text-transform: uppercase;
@@ -986,15 +996,22 @@ textarea:focus-visible,
 }
 
 .date-gregorian {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  color: var(--color-text-primary);
+  font-family: var(--font-en);
 }
 
 .date-jalali {
-  font-size: 0.6875rem;
-  color: var(--color-text-tertiary);
   font-family: var(--font-fa);
+}
+
+.date-primary {
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.date-secondary {
+  color: var(--color-text-tertiary);
+  font-size: 0.6875rem;
 }
 
 /* ─── Payment Cells ───────────────────────────────────────────────────────── */
@@ -1104,6 +1121,52 @@ textarea:focus-visible,
   border-inline-start: 1px solid var(--color-border);
 }
 
+.task-workspace-page {
+  flex: 1;
+  margin: 0 auto;
+  max-width: 1240px;
+  min-width: 0;
+  padding: var(--space-6) var(--space-8);
+  width: 100%;
+}
+
+.task-detail-panel.task-detail-page {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  height: auto;
+  inset: auto;
+  min-height: calc(100vh - var(--header-height) - (2 * var(--space-6)));
+  position: relative;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.task-detail-page .task-detail-header {
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding: var(--space-5) var(--space-8);
+}
+
+.task-detail-page .task-detail-body {
+  min-width: 0;
+  padding: var(--space-8);
+}
+
+.task-detail-page .task-detail-body-text {
+  font-size: var(--text-base);
+  max-height: none;
+  min-height: 280px;
+  overflow-wrap: anywhere;
+}
+
+.task-detail-page .task-detail-actions {
+  bottom: 0;
+  position: sticky;
+  z-index: 2;
+}
+
 .task-detail-header {
   display: flex;
   align-items: center;
@@ -1111,6 +1174,14 @@ textarea:focus-visible,
   padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
+}
+
+.task-detail-heading {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-width: 0;
 }
 
 .task-detail-body {
@@ -1124,7 +1195,7 @@ textarea:focus-visible,
 }
 
 .task-detail-field-label {
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 0.6875rem;
   font-weight: var(--weight-semibold);
   text-transform: uppercase;
@@ -1145,6 +1216,8 @@ textarea:focus-visible,
   border: 1px solid var(--color-border);
   max-height: 200px;
   overflow-y: auto;
+  text-align: start;
+  unicode-bidi: plaintext;
 }
 
 .task-detail-actions {
@@ -1173,7 +1246,7 @@ textarea:focus-visible,
   display: flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 0.6875rem;
   font-weight: var(--weight-medium);
   color: var(--color-text-tertiary);
@@ -1196,6 +1269,131 @@ textarea:focus-visible,
 
 [dir="rtl"] .stepper-arrow {
   transform: scaleX(-1);
+}
+
+[dir="rtl"] .task-workspace-back-icon {
+  transform: scaleX(-1);
+}
+
+/* ─── Persian Typography & RTL Refinements ───────────────────────────────── */
+[dir="rtl"] .eyebrow,
+[dir="rtl"] .sidebar-section-title,
+[dir="rtl"] .stat-card-label,
+[dir="rtl"] .form-label,
+[dir="rtl"] .data-table th,
+[dir="rtl"] .task-detail-field-label {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+[dir="rtl"] .page-title,
+[dir="rtl"] .card-title,
+[dir="rtl"] .sidebar-logo-text,
+[dir="rtl"] .stat-card-value,
+[dir="rtl"] .status-badge {
+  letter-spacing: 0;
+}
+
+[dir="rtl"] .page-title {
+  line-height: 1.45;
+}
+
+[dir="rtl"] .page-subtitle {
+  line-height: 1.8;
+  margin-top: var(--space-1);
+}
+
+[dir="rtl"] .sidebar-logo {
+  padding-block: 1.1rem;
+}
+
+[dir="rtl"] .sidebar-logo-sub {
+  font-size: 0.75rem;
+  line-height: 1.7;
+}
+
+[dir="rtl"] .sidebar-section-title {
+  color: #8A8790;
+  font-size: 0.75rem;
+  font-weight: var(--weight-semibold);
+  line-height: 1.7;
+  margin-bottom: var(--space-2);
+}
+
+[dir="rtl"] .sidebar-link {
+  font-size: 0.9rem;
+  line-height: 1.65;
+  padding-block: 0.5rem;
+}
+
+[dir="rtl"] .sidebar-user-role,
+[dir="rtl"] .stat-card-label,
+[dir="rtl"] .form-label,
+[dir="rtl"] .data-table th,
+[dir="rtl"] .task-detail-field-label {
+  font-size: 0.75rem;
+  line-height: 1.7;
+}
+
+[dir="rtl"] .stat-card {
+  gap: 0.375rem;
+}
+
+[dir="rtl"] .stat-card-value {
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+[dir="rtl"] .btn,
+[dir="rtl"] .filter-pill,
+[dir="rtl"] .status-badge {
+  line-height: 1.6;
+}
+
+[dir="rtl"] .form-input,
+[dir="rtl"] .form-select,
+[dir="rtl"] .form-textarea,
+[dir="rtl"] .data-table-search input {
+  line-height: 1.7;
+}
+
+[dir="rtl"] .form-input.input-mono,
+[dir="rtl"] .task-id,
+[dir="rtl"] .payment-amount {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+[dir="rtl"] .form-input.input-mono {
+  text-align: left;
+}
+
+[dir="rtl"] .date-dual {
+  line-height: 1.55;
+}
+
+[dir="rtl"] .date-jalali {
+  line-height: 1.65;
+}
+
+[dir="rtl"] .payment-amount-irr {
+  direction: rtl;
+  font-family: var(--font-fa);
+  font-size: 0.75rem;
+  unicode-bidi: isolate;
+}
+
+.latin-text {
+  direction: ltr;
+  display: inline-block;
+  font-family: var(--font-en);
+  unicode-bidi: isolate;
+}
+
+[dir="rtl"] .modal-title,
+[dir="rtl"] .task-detail-body-text,
+[dir="rtl"] .toast-message {
+  line-height: 1.75;
 }
 
 /* ─── Login Page ──────────────────────────────────────────────────────────── */
@@ -1342,6 +1540,20 @@ textarea:focus-visible,
   .task-detail-panel {
     width: 100vw;
   }
+
+  .task-workspace-page {
+    padding: var(--space-4);
+  }
+
+  .task-detail-panel.task-detail-page {
+    min-height: calc(100vh - var(--header-height) - (2 * var(--space-4)));
+    width: 100%;
+  }
+
+  .task-detail-page .task-detail-header,
+  .task-detail-page .task-detail-body {
+    padding: var(--space-4);
+  }
 }
 
 @media (max-width: 480px) {
@@ -1363,6 +1575,27 @@ textarea:focus-visible,
   .modal-body,
   .modal-footer {
     padding: var(--space-4);
+  }
+
+  .task-detail-page .task-detail-header {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .task-detail-page .task-detail-header > .btn {
+    align-self: flex-start;
+  }
+
+  .task-detail-page .task-detail-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .task-detail-page .task-id {
+    border-radius: var(--radius-md);
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .modal-footer {

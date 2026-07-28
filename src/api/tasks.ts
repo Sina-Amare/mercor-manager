@@ -44,6 +44,32 @@ function cloudWriteError(action: string, error: unknown): Error {
   return new Error(`${action} failed in Supabase: ${getErrorMessage(error)}`);
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  return !!error && typeof error === 'object' && 'code' in error && error.code === '23505';
+}
+
+async function stableTaskRecordId(taskId: string): Promise<string> {
+  const normalized = taskId.trim().toLocaleLowerCase('en-US');
+  if (globalThis.crypto?.subtle) {
+    const digest = await globalThis.crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(normalized)
+    );
+    const hash = [...new Uint8Array(digest)]
+      .slice(0, 16)
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
+    return `task_${hash}`;
+  }
+
+  let hash = 2166136261;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash ^= normalized.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `task_${(hash >>> 0).toString(16).padStart(8, '0')}_${normalized.length}`;
+}
+
 function isUser(value: unknown): value is User {
   if (!value || typeof value !== 'object') return false;
   const user = value as Partial<User>;
@@ -201,10 +227,16 @@ export async function createTask(data: {
   body: string;
   assigned_to: string;
 }): Promise<Task> {
-  const taskId = `task_${globalThis.crypto?.randomUUID?.() || Date.now()}`;
+  const normalizedTaskId = data.task_id.trim();
+  const duplicate = await checkDuplicateTaskId(normalizedTaskId);
+  if (duplicate.isDuplicate) {
+    throw new Error('This Task ID already exists and cannot be created twice');
+  }
+
+  const taskId = await stableTaskRecordId(normalizedTaskId);
   const newTask: Task = {
     id: taskId,
-    task_id: data.task_id,
+    task_id: normalizedTaskId,
     body: data.body,
     assigned_to: data.assigned_to,
     status: 'assigned',
@@ -234,6 +266,9 @@ export async function createTask(data: {
       return expanded;
     }
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new Error('This Task ID already exists and cannot be created twice');
+    }
     if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Creating task', error);
   }
 
@@ -353,7 +388,8 @@ export async function checkDuplicateTaskId(
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
-      .eq('task_id', taskId.trim());
+      .ilike('task_id', taskId.trim())
+      .limit(1);
 
     if (error) throw error;
     if (data && data.length > 0) {

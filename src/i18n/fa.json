@@ -19,7 +19,7 @@
     "settings": "تنظیمات",
     "my_dashboard": "داشبورد من",
     "my_tasks": "تسک‌های من",
-    "working": "در حال کار",
+    "working": "جاری و ارسال‌شده",
     "my_history": "سابقه من",
     "my_payments": "پرداخت‌های من",
     "logout": "خروج",
@@ -123,7 +123,10 @@
     "username": "نام کاربری",
     "password": "رمز عبور",
     "role": "نقش",
-    "active": "فعال"
+    "active": "فعال",
+    "admin_role": "مدیر",
+    "member_role": "عضو",
+    "task_count": "تسک"
   },
   "payments": {
     "title": "پرداخت‌ها",
@@ -160,6 +163,14 @@
     "no": "خیر",
     "of": "از",
     "total": "مجموع",
-    "showing": "نمایش"
+    "showing": "نمایش",
+    "open_navigation": "باز کردن منو",
+    "close_navigation": "بستن منو",
+    "primary_navigation": "منوی اصلی",
+    "use_english": "تغییر زبان به انگلیسی",
+    "use_persian": "تغییر زبان به فارسی",
+    "logout_title": "از حساب خارج می‌شوید؟",
+    "logout_question": "آیا می‌خواهید از این حساب کاربری خارج شوید؟",
+    "back": "بازگشت"
   }
 }

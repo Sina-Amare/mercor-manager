@@ -2,6 +2,18 @@
 <html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      try {
+        const savedLanguage = JSON.parse(localStorage.getItem('agnus-language') || '{}')
+          ?.state?.language;
+        if (savedLanguage === 'fa') {
+          document.documentElement.lang = 'fa';
+          document.documentElement.dir = 'rtl';
+        }
+      } catch {
+        // The app will restore the default language when persisted data is invalid.
+      }
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="AGNUS — Task Management System for Mercor Projects. Track tasks, manage team, and handle payments." />

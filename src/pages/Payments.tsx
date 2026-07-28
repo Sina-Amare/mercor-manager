@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../store';
-import { formatCurrency, usdToIrr } from '../utils/dates';
+import { formatCurrency, formatNumber, usdToIrr } from '../utils/dates';
 import DateDisplay from '../components/shared/DateDisplay';
 import StatusBadge from '../components/shared/StatusBadge';
 import TaskDetailPanel from '../components/tasks/TaskDetailPanel';
@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom';
 
 export default function Payments() {
   const { user } = useAuthStore();
-  const { t } = useLanguageStore();
+  const { t, language } = useLanguageStore();
   const { tasks, members, settings, updateTask } = useAppStore();
   const { addToast } = useToastStore();
   const navigate = useNavigate();
@@ -95,28 +95,28 @@ export default function Payments() {
         <div className="stat-card">
           <span className="stat-card-label">{t('dashboard.total_paid')}</span>
           <span className="stat-card-value" style={{ color: 'var(--color-success)' }}>
-            {formatCurrency(totalPaidUsd, 'USD')}
+            {formatCurrency(totalPaidUsd, 'USD', language)}
           </span>
           <span className="payment-amount-irr">
-            {formatCurrency(usdToIrr(totalPaidUsd, settings.usd_to_irr_rate), 'IRR')}
+            {formatCurrency(usdToIrr(totalPaidUsd, settings.usd_to_irr_rate), 'IRR', language)}
           </span>
         </div>
         <div className="stat-card">
           <span className="stat-card-label">{t('dashboard.pending_payment')}</span>
           <span className="stat-card-value" style={{ color: 'var(--color-warning)' }}>
-            {formatCurrency(totalPendingUsd, 'USD')}
+            {formatCurrency(totalPendingUsd, 'USD', language)}
           </span>
           <span className="payment-amount-irr">
-            {formatCurrency(usdToIrr(totalPendingUsd, settings.usd_to_irr_rate), 'IRR')}
+            {formatCurrency(usdToIrr(totalPendingUsd, settings.usd_to_irr_rate), 'IRR', language)}
           </span>
         </div>
         <div className="stat-card">
           <span className="stat-card-label">{t('payments.tasks_paid')}</span>
-          <span className="stat-card-value">{paidTasks.length}</span>
+          <span className="stat-card-value">{formatNumber(paidTasks.length, language)}</span>
         </div>
         <div className="stat-card">
           <span className="stat-card-label">{t('payments.tasks_pending')}</span>
-          <span className="stat-card-value">{pendingTasks.length}</span>
+          <span className="stat-card-value">{formatNumber(pendingTasks.length, language)}</span>
         </div>
       </div>
 
@@ -161,19 +161,19 @@ export default function Payments() {
                         {member.name}
                       </div>
                     </td>
-                    <td>{mApproved}</td>
+                    <td>{formatNumber(mApproved, language)}</td>
                     <td style={{ color: 'var(--color-success)', fontWeight: 'var(--weight-semibold)' }}>
-                      {mPaid.length}
+                      {formatNumber(mPaid.length, language)}
                     </td>
                     <td style={{ color: 'var(--color-warning)', fontWeight: 'var(--weight-semibold)' }}>
-                      {mPending.length}
+                      {formatNumber(mPending.length, language)}
                     </td>
                     <td>
-                      <span className="payment-amount">{formatCurrency(mTotalPaid, 'USD')}</span>
+                      <span className="payment-amount">{formatCurrency(mTotalPaid, 'USD', language)}</span>
                     </td>
                     <td>
                       <span className="payment-amount-irr">
-                        {formatCurrency(usdToIrr(mTotalPaid, settings.usd_to_irr_rate), 'IRR')}
+                        {formatCurrency(usdToIrr(mTotalPaid, settings.usd_to_irr_rate), 'IRR', language)}
                       </span>
                     </td>
                   </tr>
@@ -223,10 +223,10 @@ export default function Payments() {
                       </td>
                     )}
                     <td><StatusBadge status={task.status} /></td>
-                    <td><span className="payment-amount">{formatCurrency(task.payment_amount_usd, 'USD')}</span></td>
+                    <td><span className="payment-amount">{formatCurrency(task.payment_amount_usd, 'USD', language)}</span></td>
                     <td>
                       <span className="payment-amount-irr">
-                        {formatCurrency(usdToIrr(task.payment_amount_usd, settings.usd_to_irr_rate), 'IRR')}
+                        {formatCurrency(usdToIrr(task.payment_amount_usd, settings.usd_to_irr_rate), 'IRR', language)}
                       </span>
                     </td>
                     <td><DateDisplay date={task.payment_date || task.updated} /></td>
@@ -322,7 +322,7 @@ export default function Payments() {
                 />
                 {editUsd > 0 && (
                   <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                    = {formatCurrency(usdToIrr(editUsd, settings.usd_to_irr_rate), 'IRR')}
+                    = {formatCurrency(usdToIrr(editUsd, settings.usd_to_irr_rate), 'IRR', language)}
                   </div>
                 )}
               </div>

@@ -1,20 +1,21 @@
 import { useState, useEffect } from 'react';
-import { X, Save, CheckCircle, ArrowRight, AlertCircle } from 'lucide-react';
-import type { Task, TaskStatus } from '../../types';
+import { X, Save, CheckCircle, ArrowRight, ArrowLeft, AlertCircle } from 'lucide-react';
+import { STATUS_CONFIG, type Task, type TaskStatus } from '../../types';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../../store';
 import StatusBadge from '../shared/StatusBadge';
 import DateDisplay from '../shared/DateDisplay';
 import { updateTask as apiUpdateTask } from '../../api/tasks';
-import { formatCurrency, usdToIrr } from '../../utils/dates';
+import { formatCurrency, formatNumber, usdToIrr } from '../../utils/dates';
 
 interface Props {
   task: Task;
   onClose: () => void;
+  variant?: 'drawer' | 'page';
 }
 
-export default function TaskDetailPanel({ task, onClose }: Props) {
+export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: Props) {
   const { user } = useAuthStore();
-  const { t } = useLanguageStore();
+  const { t, language } = useLanguageStore();
   const { updateTask, settings, members } = useAppStore();
   const { addToast } = useToastStore();
   const isAdmin = user?.role === 'admin';
@@ -53,6 +54,13 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
       if (['swf', 'swof', 'member_discarded'].includes(newStatus)) {
         data.member_verdict = newStatus as Task['member_verdict'];
         data.member_verdict_date = new Date().toISOString();
+      }
+      if (
+        newStatus === 'working' &&
+        ['swf', 'swof', 'member_discarded', 'sent_back'].includes(task.status)
+      ) {
+        data.member_verdict = '';
+        data.member_verdict_date = '';
       }
       if (['approved', 'sent_back', 'admin_discarded'].includes(newStatus)) {
         data.admin_verdict = newStatus === 'approved'
@@ -182,12 +190,12 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
     }
     if (task.status === 'working') {
       memberActions.push(
-        { label: t('tasks.set_swof'), status: 'swof', color: 'btn-success' },
-        { label: t('tasks.set_swf'), status: 'swf', color: 'btn-secondary' },
+        { label: t('tasks.set_swf'), status: 'swf', color: 'btn-success' },
+        { label: t('tasks.set_swof'), status: 'swof', color: 'btn-secondary' },
         { label: t('tasks.discard'), status: 'member_discarded', color: 'btn-danger' }
       );
     }
-    if (task.status === 'sent_back') {
+    if (['swf', 'swof', 'member_discarded', 'sent_back'].includes(task.status)) {
       memberActions.push({ label: t('tasks.resume'), status: 'working', color: 'btn-primary' });
     }
   }
@@ -215,15 +223,28 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
   }
 
   return (
-    <div className="task-detail-panel" role="dialog" aria-modal="true">
+    <div
+      className={`task-detail-panel ${variant === 'page' ? 'task-detail-page' : ''}`}
+      role={variant === 'page' ? 'region' : 'dialog'}
+      aria-modal={variant === 'drawer' ? true : undefined}
+    >
       {/* Panel Header */}
       <div className="task-detail-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+        <div className="task-detail-heading">
           <span className="task-id">{task.task_id}</span>
           <StatusBadge status={task.status} />
         </div>
-        <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose} title="Close (Esc)">
-          <X size={18} />
+        <button
+          className="btn btn-ghost btn-icon btn-sm"
+          onClick={onClose}
+          title={variant === 'page' ? t('common.back') : t('common.close')}
+          aria-label={variant === 'page' ? t('common.back') : t('common.close')}
+        >
+          {variant === 'page' ? (
+            <ArrowLeft className="task-workspace-back-icon" size={18} />
+          ) : (
+            <X size={18} />
+          )}
         </button>
       </div>
 
@@ -231,23 +252,23 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
         {/* Visual Lifecycle Stepper */}
         <div className="stepper">
           <div className={`stepper-step ${currentStage >= 1 ? (currentStage > 1 ? 'completed' : 'active') : ''}`}>
-            <span>1. {t('status.assigned')}</span>
+            <span>{formatNumber(1, language)}. {t('status.assigned')}</span>
           </div>
           <ArrowRight className="stepper-arrow" size={12} />
           <div className={`stepper-step ${currentStage >= 2 ? (currentStage > 2 ? 'completed' : 'active') : ''}`}>
-            <span>2. {t('status.working')}</span>
+            <span>{formatNumber(2, language)}. {t('status.working')}</span>
           </div>
           <ArrowRight className="stepper-arrow" size={12} />
           <div className={`stepper-step ${currentStage >= 3 ? (currentStage > 3 ? 'completed' : 'active') : ''}`}>
-            <span>3. {t('tasks.verdict')}</span>
+            <span>{formatNumber(3, language)}. {t('tasks.verdict')}</span>
           </div>
           <ArrowRight className="stepper-arrow" size={12} />
           <div className={`stepper-step ${currentStage >= 4 ? (currentStage > 4 ? 'completed' : 'active') : ''}`}>
-            <span>4. {t('status.in_studio')}</span>
+            <span>{formatNumber(4, language)}. {t('status.in_studio')}</span>
           </div>
           <ArrowRight className="stepper-arrow" size={12} />
           <div className={`stepper-step ${currentStage >= 5 ? 'completed' : ''}`}>
-            <span>5. {t('tasks.final')}</span>
+            <span>{formatNumber(5, language)}. {t('tasks.final')}</span>
           </div>
         </div>
 
@@ -348,7 +369,7 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
               </div>
               {paymentUsd > 0 && (
                 <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                  = {formatCurrency(usdToIrr(paymentUsd, settings.usd_to_irr_rate), 'IRR')}
+                  = {formatCurrency(usdToIrr(paymentUsd, settings.usd_to_irr_rate), 'IRR', language)}
                 </div>
               )}
               {task.payment_status !== 'paid' && (
@@ -392,10 +413,10 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
             <div className="task-detail-field-label">{t('tasks.payment')}</div>
             <div style={{ background: 'var(--color-surface)', padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
               <div className="payment-amount" style={{ fontSize: 'var(--text-lg)' }}>
-                {formatCurrency(task.payment_amount_usd, 'USD')}
+                {formatCurrency(task.payment_amount_usd, 'USD', language)}
               </div>
               <div className="payment-amount-irr">
-                {formatCurrency(usdToIrr(task.payment_amount_usd, settings.usd_to_irr_rate), 'IRR')}
+                {formatCurrency(usdToIrr(task.payment_amount_usd, settings.usd_to_irr_rate), 'IRR', language)}
               </div>
               {task.payment_status === 'paid' && (
                 <div style={{ marginTop: 'var(--space-2)' }}>
@@ -453,6 +474,7 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
               disabled={saving}
               style={{ flex: 1 }}
             >
+              <span aria-hidden="true">{STATUS_CONFIG[action.status].icon}</span>
               {action.label}
             </button>
           ))}
