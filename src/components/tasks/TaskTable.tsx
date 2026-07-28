@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Search, Trash2, ArrowRightLeft, Eye, ChevronUp, ChevronDown } from 'lucide-react';
 import type { Task, TaskStatus } from '../../types';
 import { TASK_STATUSES, STATUS_CONFIG } from '../../types';
@@ -6,7 +6,7 @@ import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../.
 import StatusBadge from '../shared/StatusBadge';
 import DateDisplay from '../shared/DateDisplay';
 import TaskDetailPanel from './TaskDetailPanel';
-import { deleteTask, deleteTasks, updateTask as apiUpdateTask } from '../../api/tasks';
+import { deleteTask, deleteTasks, updateTasks as apiUpdateTasks } from '../../api/tasks';
 import { formatCurrency, usdToIrr } from '../../utils/dates';
 
 interface Props {
@@ -40,10 +40,14 @@ export default function TaskTable({
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [reassignModalOpen, setReassignModalOpen] = useState(false);
   const [reassignTarget, setReassignTarget] = useState('');
+  const inputTaskIds = useMemo(() => new Set(inputTasks.map((task) => task.id)), [inputTasks]);
+  const activeSelectedTaskIds = selectedTaskIds.filter((id) => inputTaskIds.has(id));
+
+  useEffect(() => () => clearSelection(), [clearSelection]);
 
   // Filter & Sort
   const filteredTasks = useMemo(() => {
-    let result = inputTasks;
+    let result = [...inputTasks];
 
     // Filter by status pill
     if (activeStatusFilter !== 'all') {
@@ -108,7 +112,10 @@ export default function TaskTable({
   };
 
   const handleSelectAll = () => {
-    if (selectedTaskIds.length === filteredTasks.length) {
+    const allFilteredSelected =
+      filteredTasks.length > 0 &&
+      filteredTasks.every((task) => activeSelectedTaskIds.includes(task.id));
+    if (allFilteredSelected) {
       clearSelection();
     } else {
       selectAllTasks(filteredTasks.map((t) => t.id));
@@ -117,9 +124,12 @@ export default function TaskTable({
 
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [reassigning, setReassigning] = useState(false);
 
   const confirmDeleteTask = async () => {
-    if (!deletingTask) return;
+    if (!deletingTask || deleting) return;
+    setDeleting(true);
     try {
       await deleteTask(deletingTask.id);
       removeTask(deletingTask.id);
@@ -127,35 +137,46 @@ export default function TaskTable({
     } catch {
       addToast('Failed to delete task', 'error');
     } finally {
+      setDeleting(false);
       setDeletingTask(null);
     }
   };
 
   const confirmBulkDelete = async () => {
+    const idsToDelete = [...activeSelectedTaskIds];
+    if (idsToDelete.length === 0 || deleting) return;
+    setDeleting(true);
     try {
-      await deleteTasks(selectedTaskIds);
-      removeTasks(selectedTaskIds);
-      addToast(`${selectedTaskIds.length} tasks deleted successfully`, 'success');
+      await deleteTasks(idsToDelete);
+      removeTasks(idsToDelete);
+      addToast(`${idsToDelete.length} tasks deleted successfully`, 'success');
       clearSelection();
     } catch {
       addToast('Failed to delete tasks', 'error');
     } finally {
+      setDeleting(false);
       setShowBulkDeleteModal(false);
     }
   };
 
   const handleBulkReassign = async () => {
-    if (!reassignTarget) return;
+    const idsToReassign = [...activeSelectedTaskIds];
+    if (!reassignTarget || idsToReassign.length === 0 || reassigning) return;
+    setReassigning(true);
     try {
-      for (const id of selectedTaskIds) {
-        await apiUpdateTask(id, { assigned_to: reassignTarget } as Partial<Task>);
-        updateTask(id, { assigned_to: reassignTarget });
-      }
+      const updatedTasks = await apiUpdateTasks(
+        idsToReassign,
+        { assigned_to: reassignTarget } as Partial<Task>
+      );
+      updatedTasks.forEach((task) => updateTask(task.id, task));
       clearSelection();
       setReassignModalOpen(false);
-      addToast(`${selectedTaskIds.length} tasks reassigned`, 'success');
+      setReassignTarget('');
+      addToast(`${idsToReassign.length} tasks reassigned`, 'success');
     } catch {
       addToast('Failed to reassign tasks', 'error');
+    } finally {
+      setReassigning(false);
     }
   };
 
@@ -178,7 +199,7 @@ export default function TaskTable({
           className={`filter-pill ${activeStatusFilter === 'all' ? 'active' : ''}`}
           onClick={() => setActiveStatusFilter('all')}
         >
-          All Tasks ({inputTasks.length})
+          {t('nav.all_tasks')} ({inputTasks.length})
         </button>
         {TASK_STATUSES.map((statusKey) => {
           const count = inputTasks.filter((t) => t.status === statusKey).length;
@@ -209,7 +230,7 @@ export default function TaskTable({
           </div>
           <div className="data-table-filters">
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontWeight: 'var(--weight-medium)' }}>
-              Showing {filteredTasks.length} {t('common.of')} {inputTasks.length}
+              {t('common.showing')} {filteredTasks.length} {t('common.of')} {inputTasks.length}
             </span>
           </div>
         </div>
@@ -231,8 +252,12 @@ export default function TaskTable({
                     <input
                       type="checkbox"
                       className="data-table-checkbox"
-                      checked={selectedTaskIds.length === filteredTasks.length && filteredTasks.length > 0}
+                      checked={
+                        filteredTasks.length > 0 &&
+                        filteredTasks.every((task) => activeSelectedTaskIds.includes(task.id))
+                      }
                       onChange={handleSelectAll}
+                      aria-label={t('tasks.select_all')}
                     />
                   </th>
                 )}
@@ -260,15 +285,16 @@ export default function TaskTable({
               {filteredTasks.map((task) => (
                 <tr
                   key={task.id}
-                  className={selectedTaskIds.includes(task.id) ? 'selected' : ''}
+                  className={activeSelectedTaskIds.includes(task.id) ? 'selected' : ''}
                 >
                   {isAdmin && showActions && (
                     <td>
                       <input
                         type="checkbox"
                         className="data-table-checkbox"
-                        checked={selectedTaskIds.includes(task.id)}
+                        checked={activeSelectedTaskIds.includes(task.id)}
                         onChange={() => toggleTaskSelection(task.id)}
+                        aria-label={`${t('tasks.select_all')}: ${task.task_id}`}
                       />
                     </td>
                   )}
@@ -337,10 +363,10 @@ export default function TaskTable({
       </div>
 
       {/* Bulk Action Bar */}
-      {selectedTaskIds.length > 0 && isAdmin && (
+      {activeSelectedTaskIds.length > 0 && isAdmin && (
         <div className="bulk-bar">
           <span className="bulk-bar-count">
-            {selectedTaskIds.length} {t('tasks.selected')}
+            {activeSelectedTaskIds.length} {t('tasks.selected')}
           </span>
           <button className="btn btn-danger btn-sm" onClick={() => setShowBulkDeleteModal(true)}>
             <Trash2 size={14} />
@@ -369,7 +395,7 @@ export default function TaskTable({
       {deletingTask && (
         <>
           <div className="modal-backdrop" onClick={() => setDeletingTask(null)} />
-          <div className="modal">
+          <div className="modal" role="dialog" aria-modal="true">
             <div className="modal-header">
               <h3 className="modal-title" style={{ color: 'var(--color-danger)' }}>Delete Task {deletingTask.task_id}?</h3>
               <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setDeletingTask(null)}>✕</button>
@@ -386,7 +412,7 @@ export default function TaskTable({
               <button className="btn btn-secondary" onClick={() => setDeletingTask(null)}>
                 {t('common.cancel')}
               </button>
-              <button className="btn btn-danger" onClick={confirmDeleteTask}>
+              <button className="btn btn-danger" onClick={confirmDeleteTask} disabled={deleting}>
                 <Trash2 size={16} />
                 Delete Task
               </button>
@@ -399,14 +425,14 @@ export default function TaskTable({
       {showBulkDeleteModal && (
         <>
           <div className="modal-backdrop" onClick={() => setShowBulkDeleteModal(false)} />
-          <div className="modal">
+          <div className="modal" role="dialog" aria-modal="true">
             <div className="modal-header">
-              <h3 className="modal-title" style={{ color: 'var(--color-danger)' }}>Delete {selectedTaskIds.length} Tasks?</h3>
+              <h3 className="modal-title" style={{ color: 'var(--color-danger)' }}>Delete {activeSelectedTaskIds.length} Tasks?</h3>
               <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowBulkDeleteModal(false)}>✕</button>
             </div>
             <div className="modal-body">
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
-                Are you sure you want to permanently delete <strong>{selectedTaskIds.length} selected tasks</strong>?
+                Are you sure you want to permanently delete <strong>{activeSelectedTaskIds.length} selected tasks</strong>?
               </p>
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-2)' }}>
                 This action cannot be undone.
@@ -416,9 +442,9 @@ export default function TaskTable({
               <button className="btn btn-secondary" onClick={() => setShowBulkDeleteModal(false)}>
                 {t('common.cancel')}
               </button>
-              <button className="btn btn-danger" onClick={confirmBulkDelete}>
+              <button className="btn btn-danger" onClick={confirmBulkDelete} disabled={deleting}>
                 <Trash2 size={16} />
-                Delete {selectedTaskIds.length} Tasks
+                Delete {activeSelectedTaskIds.length} Tasks
               </button>
             </div>
           </div>
@@ -429,7 +455,7 @@ export default function TaskTable({
       {reassignModalOpen && (
         <>
           <div className="modal-backdrop" onClick={() => setReassignModalOpen(false)} />
-          <div className="modal">
+          <div className="modal" role="dialog" aria-modal="true">
             <div className="modal-header">
               <h3 className="modal-title">{t('tasks.reassign')}</h3>
               <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setReassignModalOpen(false)}>✕</button>
@@ -443,7 +469,9 @@ export default function TaskTable({
                   onChange={(e) => setReassignTarget(e.target.value)}
                 >
                   <option value="">{t('upload.assign_placeholder')}</option>
-                  {members.map((m) => (
+                  {members
+                    .filter((member) => member.role === 'member' && member.is_active)
+                    .map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name}
                     </option>
@@ -457,10 +485,10 @@ export default function TaskTable({
               </button>
               <button
                 className="btn btn-primary"
-                disabled={!reassignTarget}
+                disabled={!reassignTarget || reassigning}
                 onClick={handleBulkReassign}
               >
-                {t('tasks.reassign')} ({selectedTaskIds.length})
+                {t('tasks.reassign')} ({activeSelectedTaskIds.length})
               </button>
             </div>
           </div>

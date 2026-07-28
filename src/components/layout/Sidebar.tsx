@@ -25,6 +25,7 @@ export default function Sidebar() {
   const { sidebarOpen, setSidebarOpen, members, tasks } = useAppStore();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
+  const teamMembers = members.filter((member) => member.role === 'member' && member.is_active);
 
   const [membersOpen, setMembersOpen] = useState(true);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -38,23 +39,40 @@ export default function Sidebar() {
   const getMemberTaskCount = (memberId: string) =>
     tasks.filter((t) => t.assigned_to === memberId).length;
 
+  const handleSidebarClick = (event: React.MouseEvent<HTMLElement>) => {
+    if (
+      (event.target as HTMLElement).closest('a') &&
+      window.matchMedia('(max-width: 768px)').matches
+    ) {
+      setSidebarOpen(false);
+    }
+  };
+
   return (
     <>
       <button
         className="sidebar-mobile-toggle btn btn-icon btn-ghost"
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        style={{
-          position: 'fixed',
-          top: '14px',
-          insetInlineStart: '12px',
-          zIndex: 110,
-          display: 'none',
-        }}
+        aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}
+        aria-expanded={sidebarOpen}
       >
         {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
 
-      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label="Close navigation"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`sidebar ${sidebarOpen ? 'open' : ''}`}
+        onClick={handleSidebarClick}
+        aria-label="Primary navigation"
+      >
         {/* Brand Header */}
         <div className="sidebar-logo">
           <div className="sidebar-logo-icon">A</div>
@@ -68,7 +86,7 @@ export default function Sidebar() {
           /* Admin Menu */
           <>
             <div className="sidebar-section">
-              <div className="sidebar-section-title">Main Workspace</div>
+              <div className="sidebar-section-title">{t('nav.main_workspace')}</div>
               <ul className="sidebar-nav">
                 <li>
                   <NavLink to="/" end className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
@@ -94,17 +112,18 @@ export default function Sidebar() {
 
             {/* Team Members Collapsible */}
             <div className="sidebar-section">
-              <div
-                className="sidebar-section-title"
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+              <button
+                type="button"
+                className="sidebar-section-title sidebar-section-toggle"
                 onClick={() => setMembersOpen(!membersOpen)}
+                aria-expanded={membersOpen}
               >
                 <span>{t('nav.by_member')}</span>
                 <ChevronRight size={14} style={{ transform: membersOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
-              </div>
+              </button>
               {membersOpen && (
                 <ul className="sidebar-nav">
-                  {members.map((member) => (
+                  {teamMembers.map((member) => (
                     <li key={member.id}>
                       <NavLink
                         to={`/member/${member.id}`}
@@ -122,7 +141,7 @@ export default function Sidebar() {
 
             {/* Financials & Admin Controls */}
             <div className="sidebar-section" style={{ marginTop: 'auto' }}>
-              <div className="sidebar-section-title">Administration</div>
+              <div className="sidebar-section-title">{t('nav.administration')}</div>
               <ul className="sidebar-nav">
                 <li>
                   <NavLink to="/payments" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
@@ -143,7 +162,7 @@ export default function Sidebar() {
           /* Member Menu */
           <>
             <div className="sidebar-section">
-              <div className="sidebar-section-title">My Work</div>
+              <div className="sidebar-section-title">{t('nav.my_work')}</div>
               <ul className="sidebar-nav">
                 <li>
                   <NavLink to="/" end className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
@@ -165,7 +184,11 @@ export default function Sidebar() {
                     <Hammer size={18} className="sidebar-link-icon" />
                     {t('nav.working')}
                     <span className="sidebar-link-badge">
-                      {tasks.filter((t) => t.assigned_to === user?.id && t.status === 'working').length}
+                      {tasks.filter(
+                        (t) =>
+                          t.assigned_to === user?.id &&
+                          (t.status === 'working' || t.status === 'sent_back')
+                      ).length}
                     </span>
                   </NavLink>
                 </li>
@@ -173,7 +196,7 @@ export default function Sidebar() {
             </div>
 
             <div className="sidebar-section" style={{ marginTop: 'auto' }}>
-              <div className="sidebar-section-title">Financials</div>
+              <div className="sidebar-section-title">{t('nav.financials')}</div>
               <ul className="sidebar-nav">
                 <li>
                   <NavLink to="/my-payments" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
@@ -188,7 +211,12 @@ export default function Sidebar() {
 
         {/* User Footer Profile */}
         <div className="sidebar-footer">
-          <div className="sidebar-user" onClick={() => setShowLogoutModal(true)} title={t('nav.logout')}>
+          <button
+            type="button"
+            className="sidebar-user"
+            onClick={() => setShowLogoutModal(true)}
+            title={t('nav.logout')}
+          >
             <div className="sidebar-user-avatar">
               {user?.name?.charAt(0).toUpperCase() || '?'}
             </div>
@@ -199,7 +227,7 @@ export default function Sidebar() {
               </div>
             </div>
             <LogOut size={16} style={{ opacity: 0.5 }} />
-          </div>
+          </button>
         </div>
       </aside>
 
@@ -207,7 +235,7 @@ export default function Sidebar() {
       {showLogoutModal && (
         <>
           <div className="modal-backdrop" onClick={() => setShowLogoutModal(false)} />
-          <div className="modal">
+          <div className="modal" role="dialog" aria-modal="true">
             <div className="modal-header">
               <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <AlertCircle size={20} style={{ color: 'var(--color-primary)' }} />

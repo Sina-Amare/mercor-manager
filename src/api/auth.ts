@@ -9,20 +9,26 @@ export async function login(username: string, password: string): Promise<User> {
 
   // Try Supabase Cloud users table
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('users')
       .select('*')
-      .ilike('username', cleanUsername);
+      .eq('username', cleanUsername)
+      .limit(1);
 
+    if (error) throw error;
     if (data && data.length > 0) {
-      const user = data[0] as User & { password?: string };
-      if (!user.password || user.password === cleanPassword) {
-        useAuthStore.getState().login(user, 'supabase_token_' + user.id);
+      const { password: storedPassword, ...publicUser } = data[0] as User & { password?: string };
+      const user = publicUser as User;
+      if (user.is_active && storedPassword && storedPassword === cleanPassword) {
+        useAuthStore.getState().login(user, `supabase_token_${user.id}`);
         return user;
       }
     }
-  } catch {
-    // Ignore error and fall back
+  } catch (error) {
+    if (import.meta.env.VITE_ENABLE_LOCAL_FALLBACK !== 'true') {
+      const message = error instanceof Error ? error.message : 'Unable to reach Supabase';
+      throw new Error(message);
+    }
   }
 
   // Fallback to local validation

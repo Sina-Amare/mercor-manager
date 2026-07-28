@@ -7,6 +7,9 @@ interface Props {
 export default function DateDisplay({ date }: Props) {
   if (!date) return <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>;
   const { gregorian, jalali } = formatDualDate(date);
+  if (!gregorian && !jalali) {
+    return <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>;
+  }
 
   return (
     <div className="date-dual">

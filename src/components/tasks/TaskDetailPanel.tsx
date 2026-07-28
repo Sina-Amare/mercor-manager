@@ -25,6 +25,17 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
   const [paymentUsd, setPaymentUsd] = useState(task.payment_amount_usd || 0);
   const [saving, setSaving] = useState(false);
   const [confirmingAction, setConfirmingAction] = useState<{ label: string; status: TaskStatus; color: string } | null>(null);
+  const assignableMembers = members.filter(
+    (member) => member.role === 'member' && member.is_active
+  );
+
+  useEffect(() => {
+    setNotes(task.admin_notes || '');
+  }, [task.admin_notes, task.id]);
+
+  useEffect(() => {
+    setPaymentUsd(task.payment_amount_usd || 0);
+  }, [task.id, task.payment_amount_usd]);
 
   // Close drawer on Escape key press
   useEffect(() => {
@@ -68,8 +79,8 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
   const handleSaveNotes = async () => {
     setSaving(true);
     try {
-      await apiUpdateTask(task.id, { admin_notes: notes } as Partial<Task>);
-      updateTask(task.id, { admin_notes: notes });
+      const updated = await apiUpdateTask(task.id, { admin_notes: notes } as Partial<Task>);
+      updateTask(task.id, updated);
       addToast('Notes saved successfully', 'success');
     } catch {
       addToast('Failed to save notes', 'error');
@@ -79,12 +90,16 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
   };
 
   const handleSavePayment = async () => {
+    if (!Number.isFinite(paymentUsd) || paymentUsd < 0) {
+      addToast('Enter a valid non-negative payment amount', 'error');
+      return;
+    }
     setSaving(true);
     try {
-      await apiUpdateTask(task.id, {
+      const updated = await apiUpdateTask(task.id, {
         payment_amount_usd: paymentUsd,
       } as Partial<Task>);
-      updateTask(task.id, { payment_amount_usd: paymentUsd });
+      updateTask(task.id, updated);
       addToast('Payment amount saved', 'success');
     } catch {
       addToast('Failed to save payment', 'error');
@@ -94,18 +109,19 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
   };
 
   const handleMarkPaid = async () => {
+    if (!Number.isFinite(paymentUsd) || paymentUsd <= 0) {
+      addToast('Enter a valid payment amount greater than zero', 'error');
+      return;
+    }
     setSaving(true);
     try {
-      await apiUpdateTask(task.id, {
+      const paymentDate = new Date().toISOString();
+      const updated = await apiUpdateTask(task.id, {
         payment_status: 'paid',
-        payment_date: new Date().toISOString(),
+        payment_date: paymentDate,
         payment_amount_usd: paymentUsd,
       } as Partial<Task>);
-      updateTask(task.id, {
-        payment_status: 'paid',
-        payment_date: new Date().toISOString(),
-        payment_amount_usd: paymentUsd,
-      });
+      updateTask(task.id, updated);
       addToast('Marked as paid', 'success');
     } catch {
       addToast('Failed to mark as paid', 'error');
@@ -117,14 +133,11 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
   const handleRevertPayment = async () => {
     setSaving(true);
     try {
-      await apiUpdateTask(task.id, {
+      const updated = await apiUpdateTask(task.id, {
         payment_status: 'pending',
         payment_date: '',
       } as Partial<Task>);
-      updateTask(task.id, {
-        payment_status: 'pending',
-        payment_date: '',
-      });
+      updateTask(task.id, updated);
       addToast('Payment status reverted to Pending', 'success');
     } catch {
       addToast('Failed to revert payment', 'error');
@@ -136,8 +149,8 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
   const handleReassign = async (newMemberId: string) => {
     setSaving(true);
     try {
-      await apiUpdateTask(task.id, { assigned_to: newMemberId } as Partial<Task>);
-      updateTask(task.id, { assigned_to: newMemberId });
+      const updated = await apiUpdateTask(task.id, { assigned_to: newMemberId } as Partial<Task>);
+      updateTask(task.id, updated);
       addToast('Task reassigned successfully', 'success');
     } catch {
       addToast('Failed to reassign task', 'error');
@@ -152,7 +165,8 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
     if (s === 'working') return 2;
     if (['swf', 'swof', 'member_discarded'].includes(s)) return 3;
     if (['in_studio', 'in_review', 'on_hold'].includes(s)) return 4;
-    if (['approved', 'sent_back', 'admin_discarded'].includes(s)) return 5;
+    if (s === 'sent_back') return 2;
+    if (['approved', 'admin_discarded'].includes(s)) return 5;
     return 1;
   };
 
@@ -173,6 +187,9 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
         { label: t('tasks.discard'), status: 'member_discarded', color: 'btn-danger' }
       );
     }
+    if (task.status === 'sent_back') {
+      memberActions.push({ label: t('tasks.resume'), status: 'working', color: 'btn-primary' });
+    }
   }
 
   if (isAdmin) {
@@ -188,7 +205,7 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
     if (task.status === 'in_studio') {
       adminActions.push({ label: t('tasks.set_in_review'), status: 'in_review', color: 'btn-primary' });
     }
-    if (task.status === 'in_review' || task.status === 'sent_back') {
+    if (task.status === 'in_review') {
       adminActions.push(
         { label: t('tasks.approve'), status: 'approved', color: 'btn-success' },
         { label: t('tasks.send_back'), status: 'sent_back', color: 'btn-secondary' },
@@ -198,7 +215,7 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
   }
 
   return (
-    <div className="task-detail-panel">
+    <div className="task-detail-panel" role="dialog" aria-modal="true">
       {/* Panel Header */}
       <div className="task-detail-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
@@ -214,23 +231,23 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
         {/* Visual Lifecycle Stepper */}
         <div className="stepper">
           <div className={`stepper-step ${currentStage >= 1 ? (currentStage > 1 ? 'completed' : 'active') : ''}`}>
-            <span>1. Assigned</span>
+            <span>1. {t('status.assigned')}</span>
           </div>
           <ArrowRight className="stepper-arrow" size={12} />
           <div className={`stepper-step ${currentStage >= 2 ? (currentStage > 2 ? 'completed' : 'active') : ''}`}>
-            <span>2. Working</span>
+            <span>2. {t('status.working')}</span>
           </div>
           <ArrowRight className="stepper-arrow" size={12} />
           <div className={`stepper-step ${currentStage >= 3 ? (currentStage > 3 ? 'completed' : 'active') : ''}`}>
-            <span>3. Verdict</span>
+            <span>3. {t('tasks.verdict')}</span>
           </div>
           <ArrowRight className="stepper-arrow" size={12} />
           <div className={`stepper-step ${currentStage >= 4 ? (currentStage > 4 ? 'completed' : 'active') : ''}`}>
-            <span>4. Studio</span>
+            <span>4. {t('status.in_studio')}</span>
           </div>
           <ArrowRight className="stepper-arrow" size={12} />
           <div className={`stepper-step ${currentStage >= 5 ? 'completed' : ''}`}>
-            <span>5. Final</span>
+            <span>5. {t('tasks.final')}</span>
           </div>
         </div>
 
@@ -244,7 +261,7 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
               onChange={(e) => handleReassign(e.target.value)}
               disabled={saving}
             >
-              {members.map((m) => (
+              {assignableMembers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name} (@{m.username})
                 </option>
@@ -396,7 +413,7 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
       {confirmingAction && (
         <>
           <div className="modal-backdrop" onClick={() => setConfirmingAction(null)} />
-          <div className="modal" style={{ zIndex: 310 }}>
+          <div className="modal" role="dialog" aria-modal="true" style={{ zIndex: 310 }}>
             <div className="modal-header">
               <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <AlertCircle size={20} style={{ color: 'var(--color-primary)' }} />

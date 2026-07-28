@@ -18,12 +18,16 @@ export default function Header() {
           <button
             className={`header-lang-btn ${language === 'en' ? 'active' : ''}`}
             onClick={() => handleLangChange('en')}
+            aria-pressed={language === 'en'}
+            aria-label="Use English"
           >
             EN
           </button>
           <button
             className={`header-lang-btn ${language === 'fa' ? 'active' : ''}`}
             onClick={() => handleLangChange('fa')}
+            aria-pressed={language === 'fa'}
+            aria-label="Use Persian"
             style={{ fontFamily: 'var(--font-fa)' }}
           >
             فا

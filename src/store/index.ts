@@ -6,6 +6,20 @@ import fa from '../i18n/fa.json';
 
 const translations = { en, fa } as const;
 
+function publicUser(user: User): User {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    avatar: user.avatar,
+    is_active: user.is_active,
+    created: user.created,
+    updated: user.updated,
+  };
+}
+
 // ─── Language Store ──────────────────────────────────────────────────────────
 
 interface LanguageState {
@@ -58,11 +72,18 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: '',
       isAuthenticated: false,
-      login: (user, token) => set({ user, token, isAuthenticated: true }),
+      login: (user, token) => set({ user: publicUser(user), token, isAuthenticated: true }),
       logout: () => set({ user: null, token: '', isAuthenticated: false }),
-      updateUser: (user) => set({ user }),
+      updateUser: (user) => set({ user: publicUser(user) }),
     }),
-    { name: 'agnus-auth' }
+    {
+      name: 'agnus-auth',
+      version: 1,
+      migrate: (persisted) => {
+        const state = persisted as Partial<AuthState>;
+        return state.user ? { ...state, user: publicUser(state.user) } : state;
+      },
+    }
   )
 );
 
@@ -119,13 +140,49 @@ export const useAppStore = create<AppState>()((set, get) => ({
   settings: defaultSettings,
   selectedTaskIds: [],
   taskDetailId: null,
-  sidebarOpen: true,
+  sidebarOpen: false,
 
-  setTasks: (tasks) => set({ tasks }),
-  addTask: (task) => set((s) => ({ tasks: [task, ...s.tasks] })),
+  setTasks: (tasks) =>
+    set((s) => {
+      const unique = tasks.filter(
+        (task, index, all) => all.findIndex((item) => item.id === task.id) === index
+      );
+      return {
+        tasks: unique.map((task) => ({
+          ...task,
+          expand: task.expand || {
+            assigned_to: s.members.find((member) => member.id === task.assigned_to),
+          },
+        })),
+      };
+    }),
+  addTask: (task) =>
+    set((s) => {
+      const expandedTask = {
+        ...task,
+        expand: task.expand || {
+          assigned_to: s.members.find((member) => member.id === task.assigned_to),
+        },
+      };
+      const exists = s.tasks.some((item) => item.id === task.id);
+      return {
+        tasks: exists
+          ? s.tasks.map((item) => (item.id === task.id ? expandedTask : item))
+          : [expandedTask, ...s.tasks],
+      };
+    }),
   updateTask: (id, updates) =>
     set((s) => ({
-      tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+      tasks: s.tasks.map((task) => {
+        if (task.id !== id) return task;
+        const updated = { ...task, ...updates };
+        if (updates.assigned_to) {
+          updated.expand = {
+            assigned_to: s.members.find((member) => member.id === updates.assigned_to),
+          };
+        }
+        return updated;
+      }),
     })),
   removeTask: (id) =>
     set((s) => ({
@@ -143,7 +200,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
     const unique = members.filter(
       (m, i, arr) => arr.findIndex((x) => x.id === m.id || x.username === m.username) === i
     );
-    set({ members: unique });
+    set((state) => ({
+      members: unique,
+      tasks: state.tasks.map((task) => ({
+        ...task,
+        expand: {
+          assigned_to: unique.find((member) => member.id === task.assigned_to),
+        },
+      })),
+    }));
   },
   addMember: (member) =>
     set((s) => {
@@ -152,14 +217,26 @@ export const useAppStore = create<AppState>()((set, get) => ({
       return { members: [...s.members, member] };
     }),
   updateMember: (id, updates) =>
-    set((s) => ({
-      members: s.members.map((m) =>
-        m.id === id ? { ...m, ...updates } as User : m
-      ),
-    })),
+    set((s) => {
+      const existingMember = s.members.find((member) => member.id === id);
+      const updatedMember = existingMember
+        ? { ...existingMember, ...updates } as User
+        : undefined;
+      return {
+        members: s.members.map((member) => member.id === id ? updatedMember! : member),
+        tasks: s.tasks.map((task) =>
+          task.assigned_to === id
+            ? { ...task, expand: { assigned_to: updatedMember } }
+            : task
+        ),
+      };
+    }),
   removeMember: (id) =>
     set((s) => ({
       members: s.members.filter((m) => m.id !== id),
+      tasks: s.tasks.map((task) =>
+        task.assigned_to === id ? { ...task, expand: { assigned_to: undefined } } : task
+      ),
     })),
 
   setSettings: (settings) => set({ settings }),
@@ -228,7 +305,7 @@ interface ToastState {
 export const useToastStore = create<ToastState>()((set) => ({
   toasts: [],
   addToast: (message, type) => {
-    const id = Date.now().toString();
+    const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random()}`;
     set((s) => ({ toasts: [...s.toasts, { id, message, type }] }));
     setTimeout(() => {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));

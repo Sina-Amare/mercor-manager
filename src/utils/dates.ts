@@ -7,6 +7,7 @@ export function toJalali(dateStr: string): string {
   if (!dateStr) return '';
   try {
     const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return '';
     const { jy, jm, jd } = convertToJalaali(
       date.getFullYear(),
       date.getMonth() + 1,
@@ -22,6 +23,7 @@ export function toGregorian(dateStr: string): string {
   if (!dateStr) return '';
   try {
     const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return '';
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',

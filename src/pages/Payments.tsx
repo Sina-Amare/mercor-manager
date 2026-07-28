@@ -16,6 +16,7 @@ export default function Payments() {
   const { addToast } = useToastStore();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
+  const teamMembers = members.filter((member) => member.role === 'member' && member.is_active);
 
   // For members, show only their tasks
   const relevantTasks = isAdmin ? tasks : tasks.filter((t) => t.assigned_to === user?.id);
@@ -26,10 +27,13 @@ export default function Payments() {
   const totalPendingUsd = pendingTasks.reduce((sum, t) => sum + t.payment_amount_usd, 0);
 
   // Detail panel & Edit payment state
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editUsd, setEditUsd] = useState(0);
   const [saving, setSaving] = useState(false);
+  const selectedTask = selectedTaskId
+    ? tasks.find((task) => task.id === selectedTaskId) || null
+    : null;
 
   const handleOpenEditModal = (task: Task) => {
     setEditingTask(task);
@@ -38,6 +42,10 @@ export default function Payments() {
 
   const handleSavePaymentAmount = async () => {
     if (!editingTask) return;
+    if (!Number.isFinite(editUsd) || editUsd < 0) {
+      addToast('Enter a valid non-negative payment amount', 'error');
+      return;
+    }
     setSaving(true);
     try {
       const updated = await apiUpdateTask(editingTask.id, {
@@ -56,7 +64,8 @@ export default function Payments() {
   const [revertingTask, setRevertingTask] = useState<Task | null>(null);
 
   const confirmRevertPaymentStatus = async () => {
-    if (!revertingTask) return;
+    if (!revertingTask || saving) return;
+    setSaving(true);
     try {
       const updated = await apiUpdateTask(revertingTask.id, {
         payment_status: 'pending',
@@ -67,6 +76,7 @@ export default function Payments() {
     } catch {
       addToast('Failed to revert payment', 'error');
     } finally {
+      setSaving(false);
       setRevertingTask(null);
     }
   };
@@ -125,7 +135,7 @@ export default function Payments() {
               </tr>
             </thead>
             <tbody>
-              {members.map((member) => {
+              {teamMembers.map((member) => {
                 const mTasks = tasks.filter((t) => t.assigned_to === member.id);
                 const mApproved = mTasks.filter((t) => t.status === 'approved').length;
                 const mPaid = mTasks.filter((t) => t.payment_status === 'paid');
@@ -133,14 +143,25 @@ export default function Payments() {
                 const mTotalPaid = mPaid.reduce((s, t) => s + t.payment_amount_usd, 0);
 
                 return (
-                  <tr key={member.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/member/${member.id}`)}>
+                  <tr
+                    key={member.id}
+                    className="clickable-row"
+                    tabIndex={0}
+                    onClick={() => navigate(`/member/${member.id}`)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        navigate(`/member/${member.id}`);
+                      }
+                    }}
+                  >
                     <td>
                       <div className="member-cell">
                         <div className="member-avatar">{member.name.charAt(0).toUpperCase()}</div>
                         {member.name}
                       </div>
                     </td>
-                    <td>{mApproved + mPaid.length}</td>
+                    <td>{mApproved}</td>
                     <td style={{ color: 'var(--color-success)', fontWeight: 'var(--weight-semibold)' }}>
                       {mPaid.length}
                     </td>
@@ -172,7 +193,7 @@ export default function Payments() {
           {paidTasks.length === 0 ? (
             <div className="data-table-empty">
               <div className="data-table-empty-icon">💰</div>
-              <div className="data-table-empty-text">No paid tasks yet</div>
+              <div className="data-table-empty-text">{t('payments.no_paid_tasks')}</div>
             </div>
           ) : (
             <table className="data-table">
@@ -183,7 +204,7 @@ export default function Payments() {
                   <th>{t('tasks.status')}</th>
                   <th>{t('payments.amount_usd')}</th>
                   <th>IRR</th>
-                  <th>Payment Date</th>
+                  <th>{t('payments.payment_date')}</th>
                   <th>{t('tasks.actions')}</th>
                 </tr>
               </thead>
@@ -214,7 +235,7 @@ export default function Payments() {
                         <button
                           className="btn btn-ghost btn-icon btn-sm"
                           title="View Details"
-                          onClick={() => setSelectedTask(task)}
+                          onClick={() => setSelectedTaskId(task.id)}
                         >
                           <Eye size={15} />
                         </button>
@@ -251,7 +272,7 @@ export default function Payments() {
       {revertingTask && (
         <>
           <div className="modal-backdrop" onClick={() => setRevertingTask(null)} />
-          <div className="modal">
+          <div className="modal" role="dialog" aria-modal="true">
             <div className="modal-header">
               <h3 className="modal-title" style={{ color: 'var(--color-warning)' }}>Revert Payment to Pending?</h3>
               <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setRevertingTask(null)}>✕</button>
@@ -265,7 +286,12 @@ export default function Payments() {
               <button className="btn btn-secondary" onClick={() => setRevertingTask(null)}>
                 {t('common.cancel')}
               </button>
-              <button className="btn btn-primary" onClick={confirmRevertPaymentStatus} style={{ background: 'var(--color-warning)', borderColor: 'var(--color-warning)' }}>
+              <button
+                className="btn btn-primary"
+                onClick={confirmRevertPaymentStatus}
+                disabled={saving}
+                style={{ background: 'var(--color-warning)', borderColor: 'var(--color-warning)' }}
+              >
                 <RotateCcw size={16} />
                 Revert to Pending
               </button>
@@ -278,7 +304,7 @@ export default function Payments() {
       {editingTask && (
         <>
           <div className="modal-backdrop" onClick={() => setEditingTask(null)} />
-          <div className="modal">
+          <div className="modal" role="dialog" aria-modal="true">
             <div className="modal-header">
               <h3 className="modal-title">Edit Payment: {editingTask.task_id}</h3>
               <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setEditingTask(null)}>✕</button>
@@ -317,8 +343,8 @@ export default function Payments() {
       {/* Task Detail Drawer */}
       {selectedTask && (
         <>
-          <div className="modal-backdrop" onClick={() => setSelectedTask(null)} />
-          <TaskDetailPanel task={selectedTask} onClose={() => setSelectedTask(null)} />
+          <div className="modal-backdrop" onClick={() => setSelectedTaskId(null)} />
+          <TaskDetailPanel task={selectedTask} onClose={() => setSelectedTaskId(null)} />
         </>
       )}
     </div>

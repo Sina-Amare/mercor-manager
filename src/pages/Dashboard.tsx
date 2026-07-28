@@ -18,6 +18,7 @@ export default function Dashboard() {
   const { tasks, members, settings } = useAppStore();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
+  const teamMembers = members.filter((member) => member.role === 'member' && member.is_active);
 
   // Filter tasks for member view
   const myTasks = isAdmin ? tasks : tasks.filter((t) => t.assigned_to === user?.id);
@@ -140,23 +141,30 @@ export default function Dashboard() {
       </div>
 
       {/* Admin: Member Overview Cards */}
-      {isAdmin && members.length > 0 && (
+      {isAdmin && teamMembers.length > 0 && (
         <div style={{ marginTop: 'var(--space-6)' }}>
           <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', marginBottom: 'var(--space-4)' }}>
             <Users size={20} style={{ display: 'inline', verticalAlign: 'middle', marginInlineEnd: '8px' }} />
             {t('members.title')}
           </h2>
           <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-            {members.map((member) => {
+            {teamMembers.map((member) => {
               const memberTasks = tasks.filter((t) => t.assigned_to === member.id);
               const memberApproved = memberTasks.filter((t) => t.status === 'approved').length;
               const memberPaid = memberTasks.filter((t) => t.payment_status === 'paid').length;
               return (
-                <div
+                <article
+                  role="button"
+                  tabIndex={0}
                   key={member.id}
-                  className="card"
-                  style={{ cursor: 'pointer' }}
+                  className="card member-overview-card"
                   onClick={() => navigate(`/member/${member.id}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      navigate(`/member/${member.id}`);
+                    }
+                  }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
                     <div className="member-avatar" style={{ width: '40px', height: '40px', fontSize: 'var(--text-base)' }}>
@@ -195,7 +203,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </article>
               );
             })}
           </div>

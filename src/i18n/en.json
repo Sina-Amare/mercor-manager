@@ -22,7 +22,11 @@
     "working": "Working",
     "my_history": "My History",
     "my_payments": "My Payments",
-    "logout": "Logout"
+    "logout": "Logout",
+    "main_workspace": "Main Workspace",
+    "administration": "Administration",
+    "my_work": "My Work",
+    "financials": "Financials"
   },
   "status": {
     "assigned": "Assigned",
@@ -61,6 +65,8 @@
     "status": "Status",
     "member_verdict": "Member Verdict",
     "admin_verdict": "Admin Verdict",
+    "verdict": "Verdict",
+    "final": "Final",
     "created": "Created",
     "updated": "Updated",
     "notes": "Admin Notes",
@@ -70,6 +76,7 @@
     "no_tasks": "No tasks found",
     "no_tasks_desc": "There are no tasks matching your criteria",
     "claim": "Claim",
+    "resume": "Resume edits",
     "set_swf": "Submit with Failure",
     "set_swof": "Submit without Failure",
     "discard": "Discard",
@@ -130,13 +137,16 @@
     "amount_usd": "Amount (USD)",
     "mark_paid": "Mark as Paid",
     "conversion_rate": "USD to IRR Rate",
-    "set_rate": "Update Rate"
+    "set_rate": "Update Rate",
+    "no_paid_tasks": "No paid tasks yet",
+    "payment_date": "Payment Date"
   },
   "settings": {
     "title": "Settings",
     "manage_users": "Manage Users",
     "conversion_rate": "Conversion Rate",
-    "language": "Language"
+    "language": "Language",
+    "subtitle": "Manage team permissions, data synchronization, and currency rates"
   },
   "common": {
     "save": "Save",
@@ -149,6 +159,7 @@
     "yes": "Yes",
     "no": "No",
     "of": "of",
-    "total": "Total"
+    "total": "Total",
+    "showing": "Showing"
   }
 }

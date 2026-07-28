@@ -18,18 +18,25 @@ export default function UploadTasks() {
   const [dupStatus, setDupStatus] = useState<'idle' | 'checking' | 'new' | 'duplicate'>('idle');
   const [dupMessage, setDupMessage] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const latestCheckRef = useRef('');
+  const assignableMembers = members.filter(
+    (member) => member.role === 'member' && member.is_active
+  );
 
   // Real-time duplicate check
   const checkDuplicate = useCallback(
     async (id: string) => {
       if (!id.trim()) {
+        latestCheckRef.current = '';
         setDupStatus('idle');
         setDupMessage('');
         return;
       }
+      latestCheckRef.current = id.trim();
       setDupStatus('checking');
       try {
         const result = await checkDuplicateTaskId(id.trim());
+        if (latestCheckRef.current !== id.trim()) return;
         if (result.isDuplicate) {
           setDupStatus('duplicate');
           setDupMessage(`${t('upload.duplicate_other')} ${result.assignedToName}`);
@@ -79,7 +86,7 @@ export default function UploadTasks() {
   const handleOpenConfirm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskId.trim() || !body.trim() || !assignTo) return;
-    if (dupStatus === 'duplicate') return;
+    if (dupStatus !== 'new') return;
     setShowConfirmModal(true);
   };
 
@@ -87,6 +94,13 @@ export default function UploadTasks() {
     setShowConfirmModal(false);
     setLoading(true);
     try {
+      const duplicate = await checkDuplicateTaskId(taskId.trim());
+      if (duplicate.isDuplicate) {
+        setDupStatus('duplicate');
+        setDupMessage(`${t('upload.duplicate_other')} ${duplicate.assignedToName}`);
+        addToast(t('upload.duplicate_same'), 'warning');
+        return;
+      }
       const task = await createTask({
         task_id: taskId.trim(),
         body: body.trim(),
@@ -136,6 +150,8 @@ export default function UploadTasks() {
             />
             {dupStatus !== 'idle' && (
               <div
+                role="status"
+                aria-live="polite"
                 className={`dup-check ${
                   dupStatus === 'checking'
                     ? 'is-checking'
@@ -181,7 +197,7 @@ export default function UploadTasks() {
               required
             >
               <option value="">{t('upload.assign_placeholder')}</option>
-              {members.map((m) => (
+              {assignableMembers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name} (@{m.username})
                 </option>
@@ -193,7 +209,7 @@ export default function UploadTasks() {
           <button
             type="submit"
             className="btn btn-primary btn-lg"
-            disabled={loading || dupStatus === 'duplicate' || !taskId.trim() || !body.trim() || !assignTo}
+            disabled={loading || dupStatus !== 'new' || !taskId.trim() || !body.trim() || !assignTo}
             style={{ width: '100%' }}
           >
             {loading ? (
@@ -210,10 +226,16 @@ export default function UploadTasks() {
       {showConfirmModal && (
         <>
           <div className="modal-backdrop" onClick={() => setShowConfirmModal(false)} />
-          <div className="modal">
+          <div className="modal" role="dialog" aria-modal="true">
             <div className="modal-header">
               <h3 className="modal-title">Confirm Task Assignment</h3>
-              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowConfirmModal(false)}>✕</button>
+              <button
+                className="btn btn-ghost btn-icon btn-sm"
+                onClick={() => setShowConfirmModal(false)}
+                aria-label={t('common.close')}
+              >
+                ✕
+              </button>
             </div>
             <div className="modal-body">
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>

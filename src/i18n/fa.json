@@ -22,7 +22,11 @@
     "working": "در حال کار",
     "my_history": "سابقه من",
     "my_payments": "پرداخت‌های من",
-    "logout": "خروج"
+    "logout": "خروج",
+    "main_workspace": "فضای کاری اصلی",
+    "administration": "مدیریت",
+    "my_work": "کارهای من",
+    "financials": "مالی"
   },
   "status": {
     "assigned": "تخصیص داده شده",
@@ -61,6 +65,8 @@
     "status": "وضعیت",
     "member_verdict": "نتیجه عضو",
     "admin_verdict": "نتیجه مدیر",
+    "verdict": "نتیجه",
+    "final": "نهایی",
     "created": "تاریخ ایجاد",
     "updated": "آخرین بروزرسانی",
     "notes": "یادداشت مدیر",
@@ -70,6 +76,7 @@
     "no_tasks": "تسکی یافت نشد",
     "no_tasks_desc": "هیچ تسکی مطابق معیارهای شما وجود ندارد",
     "claim": "برداشتن",
+    "resume": "ادامه ویرایش",
     "set_swf": "ارسال با خطا",
     "set_swof": "ارسال بدون خطا",
     "discard": "رد کردن",
@@ -130,13 +137,16 @@
     "amount_usd": "مبلغ (دلار)",
     "mark_paid": "پرداخت شد",
     "conversion_rate": "نرخ تبدیل دلار به ریال",
-    "set_rate": "بروزرسانی نرخ"
+    "set_rate": "بروزرسانی نرخ",
+    "no_paid_tasks": "هنوز تسک پرداخت‌شده‌ای وجود ندارد",
+    "payment_date": "تاریخ پرداخت"
   },
   "settings": {
     "title": "تنظیمات",
     "manage_users": "مدیریت کاربران",
     "conversion_rate": "نرخ تبدیل",
-    "language": "زبان"
+    "language": "زبان",
+    "subtitle": "مدیریت دسترسی تیم، همگام‌سازی داده‌ها و نرخ ارز"
   },
   "common": {
     "save": "ذخیره",
@@ -149,6 +159,7 @@
     "yes": "بله",
     "no": "خیر",
     "of": "از",
-    "total": "مجموع"
+    "total": "مجموع",
+    "showing": "نمایش"
   }
 }

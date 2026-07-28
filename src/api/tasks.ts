@@ -1,28 +1,89 @@
 import { supabase } from './supabase';
-import type { Task, User, TaskStatus, AppSettings } from '../types';
+import { TASK_STATUSES, type Task, type User, type TaskStatus, type AppSettings } from '../types';
 import { MOCK_TASKS, MOCK_USERS, MOCK_SETTINGS } from './mockData';
 
 // ─── Local Cache & Deduplication ──────────────────────────────────────────────
+
+const LOCAL_FALLBACK_ENABLED = import.meta.env.VITE_ENABLE_LOCAL_FALLBACK === 'true';
+const USER_FIELDS = 'id,username,email,name,role,avatar,is_active,created,updated';
 
 let localTasks: Task[] = [...MOCK_TASKS];
 let localUsers: User[] = [...MOCK_USERS];
 let localSettings: AppSettings = { ...MOCK_SETTINGS };
 let localPasswords: Record<string, string> = {};
 
+function toPublicUser(user: User): User {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    avatar: user.avatar,
+    is_active: user.is_active,
+    created: user.created,
+    updated: user.updated,
+  };
+}
+
 function deduplicateUsers(users: User[]): User[] {
-  return users.filter((u, i, arr) => arr.findIndex((x) => x.id === u.id || x.username === u.username) === i);
+  return users
+    .map(toPublicUser)
+    .filter((u, i, arr) => arr.findIndex((x) => x.id === u.id || x.username === u.username) === i);
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String(error.message);
+  }
+  return 'Unknown cloud error';
+}
+
+function cloudWriteError(action: string, error: unknown): Error {
+  return new Error(`${action} failed in Supabase: ${getErrorMessage(error)}`);
+}
+
+function isUser(value: unknown): value is User {
+  if (!value || typeof value !== 'object') return false;
+  const user = value as Partial<User>;
+  return (
+    typeof user.id === 'string' &&
+    typeof user.username === 'string' &&
+    typeof user.name === 'string' &&
+    (user.role === 'admin' || user.role === 'member') &&
+    typeof user.is_active === 'boolean'
+  );
+}
+
+function isTask(value: unknown): value is Task {
+  if (!value || typeof value !== 'object') return false;
+  const task = value as Partial<Task>;
+  return (
+    typeof task.id === 'string' &&
+    typeof task.task_id === 'string' &&
+    typeof task.body === 'string' &&
+    typeof task.assigned_to === 'string' &&
+    TASK_STATUSES.some((status) => status === task.status)
+  );
 }
 
 // Load from localStorage if available
 try {
   const savedTasks = localStorage.getItem('agnus_local_tasks');
-  if (savedTasks) localTasks = JSON.parse(savedTasks);
+  if (savedTasks) {
+    localTasks = (JSON.parse(savedTasks) as Task[]).map(({ expand: _expand, ...task }) => task);
+  }
   const savedUsers = localStorage.getItem('agnus_local_users');
   if (savedUsers) localUsers = deduplicateUsers(JSON.parse(savedUsers));
   const savedSettings = localStorage.getItem('agnus_local_settings');
   if (savedSettings) localSettings = JSON.parse(savedSettings);
-  const savedPasswords = localStorage.getItem('agnus_local_passwords');
-  if (savedPasswords) localPasswords = JSON.parse(savedPasswords);
+  if (LOCAL_FALLBACK_ENABLED) {
+    const savedPasswords = localStorage.getItem('agnus_local_passwords');
+    if (savedPasswords) localPasswords = JSON.parse(savedPasswords);
+  } else {
+    localStorage.removeItem('agnus_local_passwords');
+  }
 } catch {
   // Ignore localStorage errors
 }
@@ -30,37 +91,33 @@ try {
 function saveLocalState() {
   try {
     localUsers = deduplicateUsers(localUsers);
-    localStorage.setItem('agnus_local_tasks', JSON.stringify(localTasks));
+    const cachedTasks = localTasks.map(({ expand: _expand, ...task }) => task);
+    localStorage.setItem('agnus_local_tasks', JSON.stringify(cachedTasks));
     localStorage.setItem('agnus_local_users', JSON.stringify(localUsers));
     localStorage.setItem('agnus_local_settings', JSON.stringify(localSettings));
-    localStorage.setItem('agnus_local_passwords', JSON.stringify(localPasswords));
+    if (LOCAL_FALLBACK_ENABLED) {
+      localStorage.setItem('agnus_local_passwords', JSON.stringify(localPasswords));
+    } else {
+      localStorage.removeItem('agnus_local_passwords');
+    }
   } catch {
     // Ignore localStorage errors
   }
 }
 
 export function validateLocalLogin(username: string, password: string): User | null {
+  if (!LOCAL_FALLBACK_ENABLED) return null;
+
   const cleanUsername = username.trim().toLowerCase();
   const cleanPassword = password.trim();
 
-  // Find user in localUsers or MOCK_USERS
   const user =
     localUsers.find((u) => u.username.trim().toLowerCase() === cleanUsername) ||
     MOCK_USERS.find((u) => u.username.trim().toLowerCase() === cleanUsername);
 
-  if (!user) return null;
-
+  if (!user || !user.is_active) return null;
   const savedPassword = localPasswords[cleanUsername];
-  if (savedPassword) {
-    return savedPassword === cleanPassword ? user : null;
-  }
-
-  // If no password set yet, save this password on first login
-  if (cleanPassword) {
-    localPasswords[cleanUsername] = cleanPassword;
-    saveLocalState();
-  }
-  return user;
+  return savedPassword && savedPassword === cleanPassword ? user : null;
 }
 
 // Helper to expand task assigned_to user
@@ -76,30 +133,31 @@ function expandTask(task: Task, userList: User[]): Task {
 
 export async function fetchTasks(): Promise<Task[]> {
   try {
-    const { data: usersData } = await supabase.from('users').select('*');
-    const userList = usersData && usersData.length > 0 ? (usersData as User[]) : localUsers;
+    const { data: usersData } = await supabase.from('users').select(USER_FIELDS);
+    const userList = usersData ? deduplicateUsers(usersData as User[]) : localUsers;
 
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
       .order('created', { ascending: false });
 
-    if (!error && data) {
+    if (error) throw error;
+    if (data) {
       const tasks = data.map((t) => expandTask(t as Task, userList));
       localTasks = tasks;
       saveLocalState();
       return tasks;
     }
-  } catch {
-    // Fallback
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Fetching tasks', error);
   }
   return localTasks;
 }
 
 export async function fetchTasksByMember(memberId: string): Promise<Task[]> {
   try {
-    const { data: usersData } = await supabase.from('users').select('*');
-    const userList = usersData && usersData.length > 0 ? (usersData as User[]) : localUsers;
+    const { data: usersData } = await supabase.from('users').select(USER_FIELDS);
+    const userList = usersData ? deduplicateUsers(usersData as User[]) : localUsers;
 
     const { data, error } = await supabase
       .from('tasks')
@@ -107,19 +165,20 @@ export async function fetchTasksByMember(memberId: string): Promise<Task[]> {
       .eq('assigned_to', memberId)
       .order('created', { ascending: false });
 
-    if (!error && data) {
+    if (error) throw error;
+    if (data) {
       return data.map((t) => expandTask(t as Task, userList));
     }
-  } catch {
-    // Fallback
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Fetching member tasks', error);
   }
   return localTasks.filter((t) => t.assigned_to === memberId);
 }
 
 export async function fetchTasksByStatus(status: TaskStatus): Promise<Task[]> {
   try {
-    const { data: usersData } = await supabase.from('users').select('*');
-    const userList = usersData && usersData.length > 0 ? (usersData as User[]) : localUsers;
+    const { data: usersData } = await supabase.from('users').select(USER_FIELDS);
+    const userList = usersData ? deduplicateUsers(usersData as User[]) : localUsers;
 
     const { data, error } = await supabase
       .from('tasks')
@@ -127,11 +186,12 @@ export async function fetchTasksByStatus(status: TaskStatus): Promise<Task[]> {
       .eq('status', status)
       .order('created', { ascending: false });
 
-    if (!error && data) {
+    if (error) throw error;
+    if (data) {
       return data.map((t) => expandTask(t as Task, userList));
     }
-  } catch {
-    // Fallback
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Fetching status tasks', error);
   }
   return localTasks.filter((t) => t.status === status);
 }
@@ -141,7 +201,7 @@ export async function createTask(data: {
   body: string;
   assigned_to: string;
 }): Promise<Task> {
-  const taskId = 'task_' + Date.now();
+  const taskId = `task_${globalThis.crypto?.randomUUID?.() || Date.now()}`;
   const newTask: Task = {
     id: taskId,
     task_id: data.task_id,
@@ -161,15 +221,20 @@ export async function createTask(data: {
   };
 
   try {
-    const { error } = await supabase.from('tasks').insert([newTask]);
-    if (!error) {
-      const expanded = expandTask(newTask, localUsers);
+    const { data: createdData, error } = await supabase
+      .from('tasks')
+      .insert([newTask])
+      .select('*')
+      .single();
+    if (error) throw error;
+    if (createdData) {
+      const expanded = expandTask(createdData as Task, localUsers);
       localTasks.unshift(expanded);
       saveLocalState();
       return expanded;
     }
-  } catch {
-    // Fallback
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Creating task', error);
   }
 
   const assignedUser = localUsers.find((u) => u.id === data.assigned_to);
@@ -191,15 +256,16 @@ export async function updateTask(id: string, data: Partial<Task>): Promise<Task>
       .select('*')
       .single();
 
-    if (!error && updatedData) {
+    if (error) throw error;
+    if (updatedData) {
       const expanded = expandTask(updatedData as Task, localUsers);
       const idx = localTasks.findIndex((t) => t.id === id);
       if (idx !== -1) localTasks[idx] = expanded;
       saveLocalState();
       return expanded;
     }
-  } catch {
-    // Fallback
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Updating task', error);
   }
 
   const idx = localTasks.findIndex((t) => t.id === id);
@@ -219,11 +285,51 @@ export async function updateTask(id: string, data: Partial<Task>): Promise<Task>
   throw new Error('Task not found');
 }
 
+export async function updateTasks(ids: string[], data: Partial<Task>): Promise<Task[]> {
+  if (ids.length === 0) return [];
+  const updatedFields = { ...data, updated: new Date().toISOString() };
+  delete updatedFields.expand;
+
+  try {
+    const { data: updatedData, error } = await supabase
+      .from('tasks')
+      .update(updatedFields)
+      .in('id', ids)
+      .select('*');
+
+    if (error) throw error;
+    if (updatedData) {
+      const updatedTasks = updatedData.map((task) => expandTask(task as Task, localUsers));
+      const updatedById = new Map(updatedTasks.map((task) => [task.id, task]));
+      localTasks = localTasks.map((task) => updatedById.get(task.id) || task);
+      saveLocalState();
+      return updatedTasks;
+    }
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Updating tasks', error);
+  }
+
+  const idSet = new Set(ids);
+  localTasks = localTasks.map((task) => {
+    if (!idSet.has(task.id)) return task;
+    const updated = { ...task, ...data, updated: new Date().toISOString() };
+    if (data.assigned_to) {
+      updated.expand = {
+        assigned_to: localUsers.find((user) => user.id === data.assigned_to),
+      };
+    }
+    return updated;
+  });
+  saveLocalState();
+  return localTasks.filter((task) => idSet.has(task.id));
+}
+
 export async function deleteTask(id: string): Promise<void> {
   try {
-    await supabase.from('tasks').delete().eq('id', id);
-  } catch {
-    // Fallback
+    const { error } = await supabase.from('tasks').delete().eq('id', id);
+    if (error) throw error;
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Deleting task', error);
   }
   localTasks = localTasks.filter((t) => t.id !== id);
   saveLocalState();
@@ -231,9 +337,10 @@ export async function deleteTask(id: string): Promise<void> {
 
 export async function deleteTasks(ids: string[]): Promise<void> {
   try {
-    await supabase.from('tasks').delete().in('id', ids);
-  } catch {
-    // Fallback
+    const { error } = await supabase.from('tasks').delete().in('id', ids);
+    if (error) throw error;
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Deleting tasks', error);
   }
   localTasks = localTasks.filter((t) => !ids.includes(t.id));
   saveLocalState();
@@ -246,9 +353,10 @@ export async function checkDuplicateTaskId(
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
-      .ilike('task_id', taskId.trim());
+      .eq('task_id', taskId.trim());
 
-    if (!error && data && data.length > 0) {
+    if (error) throw error;
+    if (data && data.length > 0) {
       const existing = data[0] as Task;
       const assignedTo = localUsers.find((u) => u.id === existing.assigned_to);
       return {
@@ -257,8 +365,8 @@ export async function checkDuplicateTaskId(
         assignedToName: assignedTo?.name || 'Unknown Member',
       };
     }
-  } catch {
-    // Fallback
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Checking duplicate task ID', error);
   }
 
   const existing = localTasks.find(
@@ -279,17 +387,18 @@ export async function fetchMembers(): Promise<User[]> {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select(USER_FIELDS)
       .eq('role', 'member')
       .order('name');
 
-    if (!error && data && data.length > 0) {
+    if (error) throw error;
+    if (data) {
       localUsers = deduplicateUsers(data as User[]);
       saveLocalState();
-      return localUsers.filter((u) => u.role === 'member');
+      return localUsers;
     }
-  } catch {
-    // Fallback
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Fetching members', error);
   }
   return deduplicateUsers(localUsers.filter((u) => u.role === 'member'));
 }
@@ -298,16 +407,17 @@ export async function fetchAllUsers(): Promise<User[]> {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select(USER_FIELDS)
       .order('name');
 
-    if (!error && data && data.length > 0) {
+    if (error) throw error;
+    if (data) {
       localUsers = deduplicateUsers(data as User[]);
       saveLocalState();
       return localUsers;
     }
-  } catch {
-    // Fallback
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Fetching users', error);
   }
   return deduplicateUsers(localUsers);
 }
@@ -321,12 +431,19 @@ export async function createUser(data: {
   email?: string;
 }): Promise<User> {
   const cleanUsername = data.username.trim().toLowerCase();
-  const userId = 'user_' + Date.now();
+  const userId = `user_${globalThis.crypto?.randomUUID?.() || Date.now()}`;
+
+  if (data.password !== data.passwordConfirm) {
+    throw new Error('Passwords do not match');
+  }
+  if (data.password.trim().length < 8) {
+    throw new Error('Password must be at least 8 characters');
+  }
 
   const newUser: User = {
     id: userId,
-    username: data.username.trim(),
-    email: data.email || `${data.username.trim()}@agnus.local`,
+    username: cleanUsername,
+    email: data.email || `${cleanUsername}@agnus.local`,
     name: data.name.trim(),
     role: data.role as 'admin' | 'member',
     avatar: '',
@@ -335,25 +452,36 @@ export async function createUser(data: {
     updated: new Date().toISOString(),
   };
 
-  if (data.password) {
+  if (LOCAL_FALLBACK_ENABLED && data.password) {
     localPasswords[cleanUsername] = data.password.trim();
   }
 
   try {
+    const { data: existingUsers, error: lookupError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('username', cleanUsername)
+      .limit(1);
+    if (lookupError) throw lookupError;
+    if (existingUsers && existingUsers.length > 0) {
+      throw new Error(`Username "${cleanUsername}" already exists`);
+    }
+
     const { data: createdData, error } = await supabase
       .from('users')
       .insert([{ ...newUser, password: data.password }])
-      .select('*')
+      .select(USER_FIELDS)
       .single();
 
-    if (!error && createdData) {
-      const u = createdData as User;
+    if (error) throw error;
+    if (createdData) {
+      const u = toPublicUser(createdData as User);
       localUsers.push(u);
       saveLocalState();
       return u;
     }
-  } catch {
-    // Fallback
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Creating user', error);
   }
 
   const existingIdx = localUsers.findIndex(
@@ -380,30 +508,64 @@ export async function updateUser(
   id: string,
   data: Partial<User> & { password?: string; passwordConfirm?: string }
 ): Promise<User> {
+  const { password, passwordConfirm, ...publicUpdates } = data;
+  if (password && password !== passwordConfirm) {
+    throw new Error('Passwords do not match');
+  }
+  if (password && password.trim().length < 8) {
+    throw new Error('Password must be at least 8 characters');
+  }
+  if (publicUpdates.username) {
+    publicUpdates.username = publicUpdates.username.trim().toLowerCase();
+  }
+  const cloudUpdates = {
+    ...publicUpdates,
+    ...(password ? { password: password.trim() } : {}),
+    updated: new Date().toISOString(),
+  };
+
   try {
+    if (publicUpdates.username) {
+      const { data: existingUsers, error: lookupError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', publicUpdates.username)
+        .neq('id', id)
+        .limit(1);
+      if (lookupError) throw lookupError;
+      if (existingUsers && existingUsers.length > 0) {
+        throw new Error(`Username "${publicUpdates.username}" already exists`);
+      }
+    }
+
     const { data: updatedData, error } = await supabase
       .from('users')
-      .update(data)
+      .update(cloudUpdates)
       .eq('id', id)
-      .select('*')
+      .select(USER_FIELDS)
       .single();
 
-    if (!error && updatedData) {
-      const u = updatedData as User;
+    if (error) throw error;
+    if (updatedData) {
+      const u = toPublicUser(updatedData as User);
       const idx = localUsers.findIndex((x) => x.id === id);
       if (idx !== -1) localUsers[idx] = u;
       saveLocalState();
       return u;
     }
-  } catch {
-    // Fallback
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Updating user', error);
   }
 
   const idx = localUsers.findIndex((u) => u.id === id);
   if (idx !== -1) {
-    const updated: User = { ...localUsers[idx], ...data, updated: new Date().toISOString() };
-    if (data.password) {
-      localPasswords[updated.username.trim().toLowerCase()] = data.password.trim();
+    const updated: User = {
+      ...localUsers[idx],
+      ...publicUpdates,
+      updated: new Date().toISOString(),
+    };
+    if (password) {
+      localPasswords[updated.username.trim().toLowerCase()] = password.trim();
     }
     localUsers[idx] = updated;
     saveLocalState();
@@ -414,9 +576,10 @@ export async function updateUser(
 
 export async function deleteUser(id: string): Promise<void> {
   try {
-    await supabase.from('users').delete().eq('id', id);
-  } catch {
-    // Fallback
+    const { error } = await supabase.from('users').delete().eq('id', id);
+    if (error) throw error;
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Deleting user', error);
   }
   localUsers = localUsers.filter((u) => u.id !== id);
   saveLocalState();
@@ -427,13 +590,14 @@ export async function deleteUser(id: string): Promise<void> {
 export async function fetchSettings(): Promise<AppSettings> {
   try {
     const { data, error } = await supabase.from('settings').select('*').limit(1);
-    if (!error && data && data.length > 0) {
+    if (error) throw error;
+    if (data && data.length > 0) {
       localSettings = data[0] as AppSettings;
       saveLocalState();
       return localSettings;
     }
-  } catch {
-    // Fallback
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Fetching settings', error);
   }
   return localSettings;
 }
@@ -449,13 +613,14 @@ export async function updateSettings(
       .select('*')
       .single();
 
-    if (!error && updatedData) {
+    if (error) throw error;
+    if (updatedData) {
       localSettings = updatedData as AppSettings;
       saveLocalState();
       return localSettings;
     }
-  } catch {
-    // Fallback
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Updating settings', error);
   }
 
   localSettings = { ...localSettings, ...data, updated: new Date().toISOString() };
@@ -465,58 +630,84 @@ export async function updateSettings(
 
 export function exportLocalBackup(): string {
   const backupData = {
-    version: 1,
+    version: 2,
     timestamp: new Date().toISOString(),
-    tasks: localTasks,
-    users: localUsers,
-    passwords: localPasswords,
+    tasks: localTasks.map(({ expand: _expand, ...task }) => task),
+    users: localUsers.map(toPublicUser),
     settings: localSettings,
   };
   return JSON.stringify(backupData, null, 2);
 }
 
-export function importLocalBackup(jsonStr: string): { tasks: Task[]; users: User[]; settings: AppSettings } {
+export async function importLocalBackup(
+  jsonStr: string
+): Promise<{ tasks: Task[]; users: User[]; settings: AppSettings }> {
   const parsed = JSON.parse(jsonStr);
-  if (Array.isArray(parsed.tasks)) localTasks = parsed.tasks;
-  if (Array.isArray(parsed.users)) localUsers = deduplicateUsers(parsed.users);
-  if (parsed.passwords && typeof parsed.passwords === 'object') localPasswords = parsed.passwords;
-  if (parsed.settings && typeof parsed.settings === 'object') localSettings = parsed.settings;
-  saveLocalState();
-
-  // Sync imported data to Supabase Cloud
-  try {
-    supabase.from('users').upsert(localUsers).then(() => {});
-    supabase.from('tasks').upsert(localTasks).then(() => {});
-  } catch {
-    // Ignore
+  if (!Array.isArray(parsed.tasks) || !Array.isArray(parsed.users)) {
+    throw new Error('Backup must contain task and user arrays');
   }
+  if (!parsed.settings || typeof parsed.settings !== 'object') {
+    throw new Error('Backup must contain settings');
+  }
+
+  if (!parsed.tasks.every(isTask) || !parsed.users.every(isUser)) {
+    throw new Error('Backup contains invalid task or user records');
+  }
+  if (typeof parsed.settings.usd_to_irr_rate !== 'number') {
+    throw new Error('Backup contains invalid settings');
+  }
+
+  const importedTasks = parsed.tasks as Task[];
+  const importedUsers = deduplicateUsers(parsed.users as User[]);
+  const importedSettings = parsed.settings as AppSettings;
+  const taskRows = importedTasks.map(({ expand: _expand, ...task }) => task);
+
+  if (!LOCAL_FALLBACK_ENABLED) {
+    const [usersResult, tasksResult, settingsResult] = await Promise.all([
+      supabase.from('users').upsert(importedUsers),
+      supabase.from('tasks').upsert(taskRows),
+      supabase.from('settings').upsert(importedSettings),
+    ]);
+    const syncError = usersResult.error || tasksResult.error || settingsResult.error;
+    if (syncError) throw cloudWriteError('Importing backup', syncError);
+  }
+
+  localUsers = importedUsers;
+  localTasks = importedTasks.map((task) => expandTask(task, importedUsers));
+  localSettings = importedSettings;
+  saveLocalState();
 
   return { tasks: localTasks, users: localUsers, settings: localSettings };
 }
 
 // ─── Realtime Subscriptions ──────────────────────────────────────────────────
 
-export function subscribeToTasks(callback: (data: { action: string; record: Task }) => void) {
+export interface TaskRealtimeEvent {
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+  newTask: Task | null;
+  oldTask: Partial<Task> | null;
+}
+
+export function subscribeToTasks(
+  callback: (event: TaskRealtimeEvent) => void,
+  onStatus?: (status: string) => void
+) {
   try {
     const channel = supabase
-      .channel('public:tasks')
+      .channel(`public:tasks:${globalThis.crypto?.randomUUID?.() || Date.now()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
-        callback({ action: payload.eventType, record: payload.new as Task });
+        callback({
+          eventType: payload.eventType as TaskRealtimeEvent['eventType'],
+          newTask: payload.eventType === 'DELETE' ? null : payload.new as Task,
+          oldTask: payload.old as Partial<Task>,
+        });
       })
-      .subscribe();
+      .subscribe((status) => onStatus?.(status));
 
     return () => {
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
   } catch {
     return () => {};
-  }
-}
-
-export function unsubscribeFromTasks() {
-  try {
-    supabase.removeAllChannels();
-  } catch {
-    // Ignore
   }
 }

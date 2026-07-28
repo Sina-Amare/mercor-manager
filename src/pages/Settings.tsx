@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { UserPlus, Save, Loader2, Trash2, Edit2, AlertCircle, Eye, EyeOff, Download, UploadCloud, RefreshCw } from 'lucide-react';
-import { useLanguageStore, useAppStore, useToastStore } from '../store';
+import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../store';
 import { createUser, updateUser as apiUpdateUser, deleteUser as apiDeleteUser, updateSettings, exportLocalBackup, importLocalBackup } from '../api/tasks';
 import type { User } from '../types';
 
 export default function Settings() {
   const { t } = useLanguageStore();
+  const { user: currentUser, updateUser: updateCurrentUser } = useAuthStore();
   const { members, settings, setSettings, addMember, updateMember, removeMember, tasks, setTasks, setMembers } = useAppStore();
   const { addToast } = useToastStore();
 
@@ -27,7 +28,15 @@ export default function Settings() {
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  useEffect(() => {
+    setRate(settings.usd_to_irr_rate);
+  }, [settings.usd_to_irr_rate]);
+
   const handleSaveRate = async () => {
+    if (!Number.isFinite(rate) || rate <= 0) {
+      addToast('Enter a valid conversion rate greater than zero', 'error');
+      return;
+    }
     setSavingRate(true);
     try {
       const updated = await updateSettings(settings.id, { usd_to_irr_rate: rate });
@@ -63,6 +72,14 @@ export default function Settings() {
   const handleSaveUser = async () => {
     if (savingUser) return;
     if (!formName.trim() || !formUsername.trim()) return;
+    if (!/^[a-z0-9._-]{3,32}$/i.test(formUsername.trim())) {
+      addToast('Username must be 3–32 letters, numbers, dots, dashes, or underscores', 'error');
+      return;
+    }
+    if (formPassword && formPassword.trim().length < 8) {
+      addToast('Password must be at least 8 characters', 'error');
+      return;
+    }
     setSavingUser(true);
     try {
       if (editingUser) {
@@ -74,6 +91,7 @@ export default function Settings() {
         }
         const updated = await apiUpdateUser(editingUser.id, data);
         updateMember(editingUser.id, updated);
+        if (editingUser.id === currentUser?.id) updateCurrentUser(updated);
         addToast(`Member "${formName}" updated successfully`, 'success');
       } else {
         // Create new user
@@ -103,6 +121,11 @@ export default function Settings() {
 
   const handleDeleteUserConfirm = async () => {
     if (!deletingUser || deleting) return;
+    if (deletingUser.id === currentUser?.id) {
+      addToast('You cannot remove your own active account', 'error');
+      setDeletingUser(null);
+      return;
+    }
     setDeleting(true);
     try {
       await apiDeleteUser(deletingUser.id);
@@ -129,19 +152,23 @@ export default function Settings() {
   };
 
   const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const content = event.target?.result as string;
-        const result = importLocalBackup(content);
+        const result = await importLocalBackup(content);
         setTasks(result.tasks);
         setMembers(result.users);
         setSettings(result.settings);
         addToast('Database imported and synced successfully!', 'success');
-      } catch {
-        addToast('Invalid backup JSON file', 'error');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Invalid backup JSON file';
+        addToast(message, 'error');
+      } finally {
+        input.value = '';
       }
     };
     reader.readAsText(file);
@@ -152,7 +179,7 @@ export default function Settings() {
       <div className="page-header">
         <div>
           <h1 className="page-title">{t('settings.title')}</h1>
-          <p className="page-subtitle">Manage team permissions, data synchronization, and currency rates</p>
+          <p className="page-subtitle">{t('settings.subtitle')}</p>
         </div>
       </div>
 
@@ -193,7 +220,7 @@ export default function Settings() {
             </h3>
           </div>
           <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)' }}>
-            Export database JSON to load tasks, members, and passwords onto your workers&apos; laptops instantly.
+            Export a password-free JSON snapshot of tasks, members, and settings for recovery or migration.
           </p>
           <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
             <button className="btn btn-secondary btn-sm" onClick={handleExportBackup}>
@@ -264,6 +291,7 @@ export default function Settings() {
                     value={formPassword}
                     onChange={(e) => setFormPassword(e.target.value)}
                     placeholder={editingUser ? 'Leave empty to keep current' : 'Set password'}
+                    minLength={8}
                     style={{ paddingInlineEnd: '40px' }}
                   />
                   <button
@@ -287,6 +315,8 @@ export default function Settings() {
                   className="form-select"
                   value={formRole}
                   onChange={(e) => setFormRole(e.target.value as 'admin' | 'member')}
+                  disabled={editingUser?.id === currentUser?.id}
+                  title={editingUser?.id === currentUser?.id ? 'You cannot change your own role' : undefined}
                 >
                   <option value="member">Member</option>
                   <option value="admin">Admin</option>
@@ -353,6 +383,8 @@ export default function Settings() {
                           className="btn btn-ghost btn-sm"
                           style={{ color: 'var(--color-danger)' }}
                           onClick={() => setDeletingUser(member)}
+                          disabled={member.id === currentUser?.id}
+                          title={member.id === currentUser?.id ? 'You cannot remove your own account' : undefined}
                         >
                           <Trash2 size={14} />
                           {t('common.delete')}
@@ -371,7 +403,7 @@ export default function Settings() {
       {deletingUser && (
         <>
           <div className="modal-backdrop" onClick={() => setDeletingUser(null)} />
-          <div className="modal">
+          <div className="modal" role="dialog" aria-modal="true">
             <div className="modal-header">
               <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-danger)' }}>
                 <AlertCircle size={20} />

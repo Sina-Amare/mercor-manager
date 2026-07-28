@@ -89,6 +89,7 @@
   --space-6: 1.5rem;
   --space-8: 2rem;
   --space-10: 2.5rem;
+  --space-12: 3rem;
 
   /* ── Layout Sizes ── */
   --sidebar-width: 250px;
@@ -155,6 +156,16 @@ a:hover {
   color: var(--color-primary);
 }
 
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid var(--color-primary-glow);
+  outline-offset: 2px;
+}
+
 /* ─── Eyebrow Label Style ─────────────────────────────────────────────────── */
 .eyebrow {
   font-family: var(--font-mono);
@@ -178,6 +189,14 @@ a:hover {
   flex-direction: column;
   min-height: 100vh;
   transition: margin var(--transition-slow);
+}
+
+.app-loading {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-en);
+  color: var(--color-text-secondary);
 }
 
 /* ─── Warm Sand Sidebar ──────────────────────────────────────────────────── */
@@ -247,6 +266,17 @@ a:hover {
   color: var(--color-text-tertiary);
   padding: 0 var(--space-3);
   margin-bottom: var(--space-2);
+}
+
+.sidebar-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: start;
 }
 
 .sidebar-nav {
@@ -330,6 +360,12 @@ a:hover {
   border-radius: var(--radius-lg);
   cursor: pointer;
   transition: background var(--transition-fast);
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: start;
 }
 
 .sidebar-user:hover {
@@ -420,6 +456,21 @@ a:hover {
   color: white;
 }
 
+.sidebar-mobile-toggle,
+.sidebar-backdrop {
+  display: none;
+}
+
+.sidebar-mobile-toggle {
+  position: fixed;
+  top: 14px;
+  inset-inline-start: 12px;
+  z-index: 110;
+  background: var(--color-card);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
 /* ─── Main Page Canvas ────────────────────────────────────────────────────── */
 .page {
   padding: var(--space-6) var(--space-8);
@@ -462,6 +513,14 @@ a:hover {
 .card:hover {
   border-color: var(--color-border-strong);
   transform: translateY(-1px);
+}
+
+.member-overview-card {
+  width: 100%;
+  color: inherit;
+  font-family: inherit;
+  text-align: start;
+  cursor: pointer;
 }
 
 .card-header {
@@ -719,7 +778,8 @@ a:hover {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xs);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .data-table-toolbar {
@@ -762,6 +822,7 @@ a:hover {
 
 .data-table {
   width: 100%;
+  min-width: 720px;
   border-collapse: collapse;
   font-size: var(--text-sm);
 }
@@ -797,6 +858,14 @@ a:hover {
 }
 
 .data-table tr.selected td {
+  background: var(--color-card-subtle);
+}
+
+.data-table tr.clickable-row {
+  cursor: pointer;
+}
+
+.data-table tr.clickable-row:focus-visible td {
   background: var(--color-card-subtle);
 }
 
@@ -1125,6 +1194,10 @@ a:hover {
   color: var(--color-text-tertiary);
 }
 
+[dir="rtl"] .stepper-arrow {
+  transform: scaleX(-1);
+}
+
 /* ─── Login Page ──────────────────────────────────────────────────────────── */
 .login-page {
   min-height: 100vh;
@@ -1206,6 +1279,20 @@ a:hover {
 
 /* ─── Responsive Adjustments ──────────────────────────────────────────────── */
 @media (max-width: 768px) {
+  .sidebar-mobile-toggle {
+    display: inline-flex;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 95;
+    border: 0;
+    background: rgba(24, 24, 27, 0.32);
+    backdrop-filter: blur(2px);
+  }
+
   .sidebar {
     transform: translateX(-100%);
   }
@@ -1222,15 +1309,88 @@ a:hover {
     margin-inline-start: 0;
   }
 
+  .header {
+    padding-inline-start: 3.75rem;
+  }
+
   .page {
     padding: var(--space-4);
   }
 
   .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .data-table-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .data-table-search {
+    max-width: none;
+  }
+
+  .bulk-bar {
+    bottom: var(--space-3);
+    width: calc(100vw - var(--space-6));
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    border-radius: var(--radius-xl);
   }
 
   .task-detail-panel {
     width: 100vw;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card,
+  .stat-card,
+  .login-card {
+    padding: var(--space-4);
+  }
+
+  .modal {
+    width: calc(100vw - var(--space-6));
+  }
+
+  .modal-header,
+  .modal-body,
+  .modal-footer {
+    padding: var(--space-4);
+  }
+
+  .modal-footer {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .toast-container,
+  [dir="rtl"] .toast-container {
+    top: auto;
+    right: var(--space-3);
+    bottom: var(--space-3);
+    left: var(--space-3);
+  }
+
+  .toast {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
