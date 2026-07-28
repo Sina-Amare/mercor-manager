@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { UserPlus, Save, Loader2, Trash2, Edit2, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { UserPlus, Save, Loader2, Trash2, Edit2, AlertCircle, Eye, EyeOff, Download, UploadCloud, RefreshCw } from 'lucide-react';
 import { useLanguageStore, useAppStore, useToastStore } from '../store';
-import { createUser, updateUser as apiUpdateUser, deleteUser as apiDeleteUser, updateSettings } from '../api/tasks';
+import { createUser, updateUser as apiUpdateUser, deleteUser as apiDeleteUser, updateSettings, exportLocalBackup, importLocalBackup } from '../api/tasks';
 import type { User } from '../types';
 
 export default function Settings() {
   const { t } = useLanguageStore();
-  const { members, settings, setSettings, addMember, updateMember, removeMember, tasks } = useAppStore();
+  const { members, settings, setSettings, addMember, updateMember, removeMember, tasks, setTasks, setMembers } = useAppStore();
   const { addToast } = useToastStore();
 
   // Conversion rate
@@ -116,39 +116,101 @@ export default function Settings() {
     }
   };
 
+  const handleExportBackup = () => {
+    const json = exportLocalBackup();
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `agnus-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast('Database exported successfully', 'success');
+  };
+
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const result = importLocalBackup(content);
+        setTasks(result.tasks);
+        setMembers(result.users);
+        setSettings(result.settings);
+        addToast('Database imported and synced successfully!', 'success');
+      } catch {
+        addToast('Invalid backup JSON file', 'error');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="page">
       <div className="page-header">
         <div>
           <h1 className="page-title">{t('settings.title')}</h1>
-          <p className="page-subtitle">Manage team permissions, currency rates, and configuration</p>
+          <p className="page-subtitle">Manage team permissions, data synchronization, and currency rates</p>
         </div>
       </div>
 
-      {/* Conversion Rate */}
-      <div className="card" style={{ maxWidth: '520px', marginBottom: 'var(--space-6)' }}>
-        <div className="card-header">
-          <h3 className="card-title">{t('settings.conversion_rate')}</h3>
-        </div>
-        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'end' }}>
-          <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-            <label className="form-label">{t('payments.conversion_rate')}</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>1 USD =</span>
-              <input
-                type="number"
-                className="form-input input-mono"
-                value={rate}
-                onChange={(e) => setRate(Number(e.target.value))}
-                min={0}
-              />
-              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>IRR</span>
-            </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 'var(--space-6)', marginBottom: 'var(--space-6)' }}>
+        {/* Conversion Rate */}
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">{t('settings.conversion_rate')}</h3>
           </div>
-          <button className="btn btn-primary" onClick={handleSaveRate} disabled={savingRate}>
-            {savingRate ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
-            {t('payments.set_rate')}
-          </button>
+          <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'end' }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+              <label className="form-label">{t('payments.conversion_rate')}</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>1 USD =</span>
+                <input
+                  type="number"
+                  className="form-input input-mono"
+                  value={rate}
+                  onChange={(e) => setRate(Number(e.target.value))}
+                  min={0}
+                />
+                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>IRR</span>
+              </div>
+            </div>
+            <button className="btn btn-primary" onClick={handleSaveRate} disabled={savingRate}>
+              {savingRate ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
+              {t('payments.set_rate')}
+            </button>
+          </div>
+        </div>
+
+        {/* Multi-Device Data Sync & Backup */}
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <RefreshCw size={18} />
+              Cross-Device Data Sync & Backup
+            </h3>
+          </div>
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)' }}>
+            Export database JSON to load tasks, members, and passwords onto your workers&apos; laptops instantly.
+          </p>
+          <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+            <button className="btn btn-secondary btn-sm" onClick={handleExportBackup}>
+              <Download size={14} />
+              Export Backup JSON
+            </button>
+            <label className="btn btn-primary btn-sm" style={{ cursor: 'pointer' }}>
+              <UploadCloud size={14} />
+              Import & Sync JSON
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportBackup}
+                style={{ display: 'none' }}
+              />
+            </label>
+          </div>
         </div>
       </div>
 

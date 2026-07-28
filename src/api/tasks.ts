@@ -427,6 +427,28 @@ export async function updateSettings(
   return localSettings;
 }
 
+export function exportLocalBackup(): string {
+  const backupData = {
+    version: 1,
+    timestamp: new Date().toISOString(),
+    tasks: localTasks,
+    users: localUsers,
+    passwords: localPasswords,
+    settings: localSettings,
+  };
+  return JSON.stringify(backupData, null, 2);
+}
+
+export function importLocalBackup(jsonStr: string): { tasks: Task[]; users: User[]; settings: AppSettings } {
+  const parsed = JSON.parse(jsonStr);
+  if (Array.isArray(parsed.tasks)) localTasks = parsed.tasks;
+  if (Array.isArray(parsed.users)) localUsers = deduplicateUsers(parsed.users);
+  if (parsed.passwords && typeof parsed.passwords === 'object') localPasswords = parsed.passwords;
+  if (parsed.settings && typeof parsed.settings === 'object') localSettings = parsed.settings;
+  saveLocalState();
+  return { tasks: localTasks, users: localUsers, settings: localSettings };
+}
+
 // ─── Realtime Subscriptions ──────────────────────────────────────────────────
 
 export function subscribeToTasks(callback: (data: { action: string; record: Task }) => void) {
