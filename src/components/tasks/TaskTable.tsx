@@ -115,23 +115,32 @@ export default function TaskTable({
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const [deletingTask, setDeletingTask] = useState<Task | null>(null);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+
+  const confirmDeleteTask = async () => {
+    if (!deletingTask) return;
     try {
-      await deleteTask(id);
-      removeTask(id);
-      addToast('Task deleted successfully', 'success');
+      await deleteTask(deletingTask.id);
+      removeTask(deletingTask.id);
+      addToast(`Task ${deletingTask.task_id} deleted successfully`, 'success');
     } catch {
       addToast('Failed to delete task', 'error');
+    } finally {
+      setDeletingTask(null);
     }
   };
 
-  const handleBulkDelete = async () => {
+  const confirmBulkDelete = async () => {
     try {
       await deleteTasks(selectedTaskIds);
       removeTasks(selectedTaskIds);
-      addToast(`${selectedTaskIds.length} tasks deleted`, 'success');
+      addToast(`${selectedTaskIds.length} tasks deleted successfully`, 'success');
+      clearSelection();
     } catch {
       addToast('Failed to delete tasks', 'error');
+    } finally {
+      setShowBulkDeleteModal(false);
     }
   };
 
@@ -311,7 +320,7 @@ export default function TaskTable({
                           <button
                             className="btn btn-ghost btn-icon btn-sm"
                             title={t('tasks.delete')}
-                            onClick={() => handleDelete(task.id)}
+                            onClick={() => setDeletingTask(task)}
                             style={{ color: 'var(--color-danger)' }}
                           >
                             <Trash2 size={16} />
@@ -333,7 +342,7 @@ export default function TaskTable({
           <span className="bulk-bar-count">
             {selectedTaskIds.length} {t('tasks.selected')}
           </span>
-          <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>
+          <button className="btn btn-danger btn-sm" onClick={() => setShowBulkDeleteModal(true)}>
             <Trash2 size={14} />
             {t('tasks.bulk_delete')}
           </button>
@@ -354,6 +363,66 @@ export default function TaskTable({
             ✕
           </button>
         </div>
+      )}
+
+      {/* Single Task Delete Confirmation Modal */}
+      {deletingTask && (
+        <>
+          <div className="modal-backdrop" onClick={() => setDeletingTask(null)} />
+          <div className="modal">
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ color: 'var(--color-danger)' }}>Delete Task {deletingTask.task_id}?</h3>
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setDeletingTask(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
+                Are you sure you want to delete task <strong>{deletingTask.task_id}</strong>?
+              </p>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-2)' }}>
+                This action cannot be undone.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setDeletingTask(null)}>
+                {t('common.cancel')}
+              </button>
+              <button className="btn btn-danger" onClick={confirmDeleteTask}>
+                <Trash2 size={16} />
+                Delete Task
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteModal && (
+        <>
+          <div className="modal-backdrop" onClick={() => setShowBulkDeleteModal(false)} />
+          <div className="modal">
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ color: 'var(--color-danger)' }}>Delete {selectedTaskIds.length} Tasks?</h3>
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowBulkDeleteModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
+                Are you sure you want to permanently delete <strong>{selectedTaskIds.length} selected tasks</strong>?
+              </p>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-2)' }}>
+                This action cannot be undone.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowBulkDeleteModal(false)}>
+                {t('common.cancel')}
+              </button>
+              <button className="btn btn-danger" onClick={confirmBulkDelete}>
+                <Trash2 size={16} />
+                Delete {selectedTaskIds.length} Tasks
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Reassign Modal */}

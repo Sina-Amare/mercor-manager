@@ -12,6 +12,7 @@ export default function UploadTasks() {
   const [body, setBody] = useState('');
   const [assignTo, setAssignTo] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   // Duplicate detection state
   const [dupStatus, setDupStatus] = useState<'idle' | 'checking' | 'new' | 'duplicate'>('idle');
@@ -43,7 +44,7 @@ export default function UploadTasks() {
     [t]
   );
 
-  // Also check from local store for instant feedback
+  // Local check
   const localCheck = useCallback(
     (id: string) => {
       if (!id.trim()) return;
@@ -63,10 +64,8 @@ export default function UploadTasks() {
       return;
     }
 
-    // Instant local check
     localCheck(taskId);
 
-    // Debounced server check
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       checkDuplicate(taskId);
@@ -77,11 +76,15 @@ export default function UploadTasks() {
     };
   }, [taskId, checkDuplicate, localCheck]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleOpenConfirm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskId.trim() || !body.trim() || !assignTo) return;
     if (dupStatus === 'duplicate') return;
+    setShowConfirmModal(true);
+  };
 
+  const handleConfirmUpload = async () => {
+    setShowConfirmModal(false);
     setLoading(true);
     try {
       const task = await createTask({
@@ -95,7 +98,6 @@ export default function UploadTasks() {
       setBody('');
       setDupStatus('idle');
       setDupMessage('');
-      // Keep assignTo selected for batch uploads
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to create task';
       addToast(message, 'error');
@@ -103,6 +105,8 @@ export default function UploadTasks() {
       setLoading(false);
     }
   };
+
+  const assignedMember = members.find((m) => m.id === assignTo);
 
   return (
     <div className="page">
@@ -114,7 +118,7 @@ export default function UploadTasks() {
       </div>
 
       <div className="card" style={{ maxWidth: '640px' }}>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleOpenConfirm}>
           {/* Task ID with duplicate detection */}
           <div className="form-group">
             <label className="form-label" htmlFor="task-id">
@@ -201,6 +205,33 @@ export default function UploadTasks() {
           </button>
         </form>
       </div>
+
+      {/* Upload Confirmation Modal */}
+      {showConfirmModal && (
+        <>
+          <div className="modal-backdrop" onClick={() => setShowConfirmModal(false)} />
+          <div className="modal">
+            <div className="modal-header">
+              <h3 className="modal-title">Confirm Task Assignment</h3>
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowConfirmModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
+                Are you sure you want to create task <strong className="input-mono">{taskId}</strong> and assign it to <strong>{assignedMember?.name}</strong> (@{assignedMember?.username})?
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowConfirmModal(false)}>
+                {t('common.cancel')}
+              </button>
+              <button className="btn btn-primary" onClick={handleConfirmUpload} disabled={loading}>
+                <UploadIcon size={16} />
+                Confirm & Create Task
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Spinner animation */}
       <style>{`

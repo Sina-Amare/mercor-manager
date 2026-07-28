@@ -53,16 +53,21 @@ export default function Payments() {
     }
   };
 
-  const handleRevertPaymentStatus = async (task: Task) => {
+  const [revertingTask, setRevertingTask] = useState<Task | null>(null);
+
+  const confirmRevertPaymentStatus = async () => {
+    if (!revertingTask) return;
     try {
-      const updated = await apiUpdateTask(task.id, {
+      const updated = await apiUpdateTask(revertingTask.id, {
         payment_status: 'pending',
         payment_date: '',
       } as Partial<Task>);
-      updateTask(task.id, updated);
-      addToast(`Payment for ${task.task_id} reverted to Pending`, 'success');
+      updateTask(revertingTask.id, updated);
+      addToast(`Payment for ${revertingTask.task_id} reverted to Pending`, 'success');
     } catch {
       addToast('Failed to revert payment', 'error');
+    } finally {
+      setRevertingTask(null);
     }
   };
 
@@ -225,7 +230,7 @@ export default function Payments() {
                             <button
                               className="btn btn-ghost btn-icon btn-sm"
                               title="Revert to Pending Payment"
-                              onClick={() => handleRevertPaymentStatus(task)}
+                              onClick={() => setRevertingTask(task)}
                               style={{ color: 'var(--color-warning)' }}
                             >
                               <RotateCcw size={15} />
@@ -241,6 +246,33 @@ export default function Payments() {
           )}
         </div>
       </div>
+
+      {/* Revert Payment Confirmation Modal */}
+      {revertingTask && (
+        <>
+          <div className="modal-backdrop" onClick={() => setRevertingTask(null)} />
+          <div className="modal">
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ color: 'var(--color-warning)' }}>Revert Payment to Pending?</h3>
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setRevertingTask(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
+                Are you sure you want to revert the payment for task <strong>{revertingTask.task_id}</strong> (${revertingTask.payment_amount_usd}) back to <strong>Pending Payment</strong>?
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setRevertingTask(null)}>
+                {t('common.cancel')}
+              </button>
+              <button className="btn btn-primary" onClick={confirmRevertPaymentStatus} style={{ background: 'var(--color-warning)', borderColor: 'var(--color-warning)' }}>
+                <RotateCcw size={16} />
+                Revert to Pending
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Edit Payment Modal */}
       {editingTask && (
