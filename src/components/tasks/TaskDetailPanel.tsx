@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Save } from 'lucide-react';
+import { X, Save, CheckCircle, ArrowRight } from 'lucide-react';
 import type { Task, TaskStatus } from '../../types';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../../store';
 import StatusBadge from '../shared/StatusBadge';
@@ -59,7 +59,7 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
     try {
       await apiUpdateTask(task.id, { admin_notes: notes } as Partial<Task>);
       updateTask(task.id, { admin_notes: notes });
-      addToast('Notes saved', 'success');
+      addToast('Notes saved successfully', 'success');
     } catch {
       addToast('Failed to save notes', 'error');
     } finally {
@@ -108,15 +108,27 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
     try {
       await apiUpdateTask(task.id, { assigned_to: newMemberId } as Partial<Task>);
       updateTask(task.id, { assigned_to: newMemberId });
-      addToast('Task reassigned', 'success');
+      addToast('Task reassigned successfully', 'success');
     } catch {
-      addToast('Failed to reassign', 'error');
+      addToast('Failed to reassign task', 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  // Determine available actions
+  // Determine stage index for the stepper
+  const getStageIndex = (s: TaskStatus) => {
+    if (s === 'assigned') return 1;
+    if (s === 'working') return 2;
+    if (['swf', 'swof', 'member_discarded'].includes(s)) return 3;
+    if (['in_studio', 'in_review', 'on_hold'].includes(s)) return 4;
+    if (['approved', 'sent_back', 'admin_discarded'].includes(s)) return 5;
+    return 1;
+  };
+
+  const currentStage = getStageIndex(task.status);
+
+  // Available buttons
   const memberActions: { label: string; status: TaskStatus; color: string }[] = [];
   const adminActions: { label: string; status: TaskStatus; color: string }[] = [];
 
@@ -157,20 +169,44 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
 
   return (
     <div className="task-detail-panel">
+      {/* Drawer Header */}
       <div className="task-detail-header">
         <div>
-          <span className="task-id" style={{ fontSize: 'var(--text-sm)' }}>{task.task_id}</span>
+          <span className="task-id">{task.task_id}</span>
           <div style={{ marginTop: 'var(--space-2)' }}>
             <StatusBadge status={task.status} />
           </div>
         </div>
         <button className="btn btn-ghost btn-icon" onClick={onClose}>
-          <X size={20} />
+          <X size={18} />
         </button>
       </div>
 
       <div className="task-detail-body">
-        {/* Assigned To */}
+        {/* Visual Lifecycle Stepper */}
+        <div className="stepper">
+          <div className={`stepper-step ${currentStage >= 1 ? (currentStage > 1 ? 'completed' : 'active') : ''}`}>
+            <span>1. Assigned</span>
+          </div>
+          <ArrowRight className="stepper-arrow" size={12} />
+          <div className={`stepper-step ${currentStage >= 2 ? (currentStage > 2 ? 'completed' : 'active') : ''}`}>
+            <span>2. Working</span>
+          </div>
+          <ArrowRight className="stepper-arrow" size={12} />
+          <div className={`stepper-step ${currentStage >= 3 ? (currentStage > 3 ? 'completed' : 'active') : ''}`}>
+            <span>3. Verdict</span>
+          </div>
+          <ArrowRight className="stepper-arrow" size={12} />
+          <div className={`stepper-step ${currentStage >= 4 ? (currentStage > 4 ? 'completed' : 'active') : ''}`}>
+            <span>4. Studio</span>
+          </div>
+          <ArrowRight className="stepper-arrow" size={12} />
+          <div className={`stepper-step ${currentStage >= 5 ? 'completed' : ''}`}>
+            <span>5. Final</span>
+          </div>
+        </div>
+
+        {/* Member Assignment */}
         <div className="task-detail-field">
           <div className="task-detail-field-label">{t('tasks.assigned_to')}</div>
           {isAdmin ? (
@@ -181,7 +217,9 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
               disabled={saving}
             >
               {members.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
+                <option key={m.id} value={m.id}>
+                  {m.name} (@{m.username})
+                </option>
               ))}
             </select>
           ) : (
@@ -194,13 +232,13 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
           )}
         </div>
 
-        {/* Task Body */}
+        {/* Task Body Text */}
         <div className="task-detail-field">
           <div className="task-detail-field-label">{t('tasks.body')}</div>
           <div className="task-detail-body-text">{task.body || '—'}</div>
         </div>
 
-        {/* Dates */}
+        {/* Timeline & Verdict Dates */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
           <div className="task-detail-field">
             <div className="task-detail-field-label">{t('tasks.created')}</div>
@@ -218,12 +256,12 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
         {isAdmin && (
           <div className="task-detail-field">
             <div className="task-detail-field-label">{t('tasks.notes')}</div>
-            <div className="notes-section">
+            <div style={{ background: 'var(--color-surface)', padding: 'var(--space-3)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
               <textarea
                 className="form-textarea"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add notes about this task..."
+                placeholder="Add private admin notes..."
                 rows={3}
                 style={{ minHeight: '80px' }}
               />
@@ -240,11 +278,11 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
           </div>
         )}
 
-        {/* Payment (Admin) */}
+        {/* Payment Settings (Admin) */}
         {isAdmin && (task.status === 'approved' || task.payment_status === 'paid') && (
           <div className="task-detail-field">
             <div className="task-detail-field-label">{t('tasks.payment')}</div>
-            <div className="notes-section">
+            <div style={{ background: 'var(--color-surface)', padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
               <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'end' }}>
                 <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
                   <label className="form-label">{t('payments.amount_usd')}</label>
@@ -262,7 +300,7 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
                 </button>
               </div>
               {paymentUsd > 0 && (
-                <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>
+                <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
                   = {formatCurrency(usdToIrr(paymentUsd, settings.usd_to_irr_rate), 'IRR')}
                 </div>
               )}
@@ -271,15 +309,18 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
                   className="btn btn-success btn-sm"
                   onClick={handleMarkPaid}
                   disabled={saving || paymentUsd <= 0}
-                  style={{ marginTop: 'var(--space-3)' }}
+                  style={{ marginTop: 'var(--space-3)', width: '100%' }}
                 >
+                  <CheckCircle size={14} />
                   {t('payments.mark_paid')}
                 </button>
               )}
               {task.payment_status === 'paid' && (
-                <div style={{ marginTop: 'var(--space-2)' }}>
-                  <StatusBadge status="approved" />
-                  <span style={{ marginInlineStart: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+                <div style={{ marginTop: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <span className="status-badge" style={{ color: 'var(--color-success)', background: 'var(--color-success-bg)' }}>
+                    ✅ {t('payment_status.paid')}
+                  </span>
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
                     <DateDisplay date={task.payment_date} />
                   </span>
                 </div>
@@ -288,12 +329,14 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
           </div>
         )}
 
-        {/* Member can see payment info (read only) */}
+        {/* Member Payment View */}
         {isMember && task.payment_amount_usd > 0 && (
           <div className="task-detail-field">
             <div className="task-detail-field-label">{t('tasks.payment')}</div>
-            <div className="notes-section">
-              <div className="payment-amount">{formatCurrency(task.payment_amount_usd, 'USD')}</div>
+            <div style={{ background: 'var(--color-surface)', padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
+              <div className="payment-amount" style={{ fontSize: 'var(--text-lg)' }}>
+                {formatCurrency(task.payment_amount_usd, 'USD')}
+              </div>
               <div className="payment-amount-irr">
                 {formatCurrency(usdToIrr(task.payment_amount_usd, settings.usd_to_irr_rate), 'IRR')}
               </div>
@@ -309,7 +352,7 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
         )}
       </div>
 
-      {/* Action Buttons */}
+      {/* Primary Action Controls */}
       {(memberActions.length > 0 || adminActions.length > 0) && (
         <div className="task-detail-actions">
           {[...memberActions, ...adminActions].map((action) => (
@@ -318,6 +361,7 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
               className={`btn ${action.color} btn-sm`}
               onClick={() => handleStatusChange(action.status)}
               disabled={saving}
+              style={{ flex: 1 }}
             >
               {action.label}
             </button>

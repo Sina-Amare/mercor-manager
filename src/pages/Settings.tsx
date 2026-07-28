@@ -1,19 +1,19 @@
 import { useState } from 'react';
-import { UserPlus, Save, Loader2 } from 'lucide-react';
+import { UserPlus, Save, Loader2, Trash2, Edit2, AlertCircle } from 'lucide-react';
 import { useLanguageStore, useAppStore, useToastStore } from '../store';
-import { createUser, updateUser as apiUpdateUser, updateSettings } from '../api/tasks';
+import { createUser, updateUser as apiUpdateUser, deleteUser as apiDeleteUser, updateSettings } from '../api/tasks';
 import type { User } from '../types';
 
 export default function Settings() {
   const { t } = useLanguageStore();
-  const { members, settings, setSettings, addMember, updateMember } = useAppStore();
+  const { members, settings, setSettings, addMember, updateMember, removeMember, tasks } = useAppStore();
   const { addToast } = useToastStore();
 
   // Conversion rate
   const [rate, setRate] = useState(settings.usd_to_irr_rate);
   const [savingRate, setSavingRate] = useState(false);
 
-  // New user form
+  // User form modal
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formName, setFormName] = useState('');
@@ -21,6 +21,10 @@ export default function Settings() {
   const [formPassword, setFormPassword] = useState('');
   const [formRole, setFormRole] = useState<'admin' | 'member'>('member');
   const [savingUser, setSavingUser] = useState(false);
+
+  // Delete confirm modal
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const handleSaveRate = async () => {
     setSavingRate(true);
@@ -66,7 +70,7 @@ export default function Settings() {
         }
         const updated = await apiUpdateUser(editingUser.id, data);
         updateMember(editingUser.id, updated);
-        addToast('User updated', 'success');
+        addToast(`Member "${formName}" updated successfully`, 'success');
       } else {
         // Create new user
         if (!formPassword) {
@@ -82,7 +86,7 @@ export default function Settings() {
           role: formRole,
         });
         addMember(created);
-        addToast('User created', 'success');
+        addToast(`Member "${formName}" created successfully`, 'success');
       }
       resetUserForm();
     } catch (err: unknown) {
@@ -93,16 +97,32 @@ export default function Settings() {
     }
   };
 
+  const handleDeleteUserConfirm = async () => {
+    if (!deletingUser) return;
+    setDeleting(true);
+    try {
+      await apiDeleteUser(deletingUser.id);
+      removeMember(deletingUser.id);
+      addToast(`Member "${deletingUser.name}" was removed`, 'success');
+      setDeletingUser(null);
+    } catch {
+      addToast('Failed to remove member', 'error');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="page">
       <div className="page-header">
         <div>
           <h1 className="page-title">{t('settings.title')}</h1>
+          <p className="page-subtitle">Manage team permissions, currency rates, and configuration</p>
         </div>
       </div>
 
       {/* Conversion Rate */}
-      <div className="card" style={{ maxWidth: '480px', marginBottom: 'var(--space-6)' }}>
+      <div className="card" style={{ maxWidth: '520px', marginBottom: 'var(--space-6)' }}>
         <div className="card-header">
           <h3 className="card-title">{t('settings.conversion_rate')}</h3>
         </div>
@@ -138,35 +158,35 @@ export default function Settings() {
           </button>
         </div>
 
-        {/* User Form (Create/Edit) */}
+        {/* User Form Modal / Drawer */}
         {showUserForm && (
           <div style={{
             background: 'var(--color-surface)',
             border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-md)',
-            padding: 'var(--space-4)',
-            marginBottom: 'var(--space-4)',
+            borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-5)',
+            marginBottom: 'var(--space-5)',
           }}>
-            <h4 style={{ marginBottom: 'var(--space-3)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>
+            <h4 style={{ marginBottom: 'var(--space-4)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-bold)' }}>
               {editingUser ? t('members.edit_user') : t('members.create_user')}
             </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-3)' }}>
               <div className="form-group">
                 <label className="form-label">{t('members.name')}</label>
                 <input
                   className="form-input"
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  placeholder="John Doe"
+                  placeholder="e.g. Sina"
                 />
               </div>
               <div className="form-group">
                 <label className="form-label">{t('members.username')}</label>
                 <input
-                  className="form-input"
+                  className="form-input input-mono"
                   value={formUsername}
                   onChange={(e) => setFormUsername(e.target.value)}
-                  placeholder="johndoe"
+                  placeholder="e.g. sina"
                   disabled={!!editingUser}
                 />
               </div>
@@ -192,7 +212,7 @@ export default function Settings() {
                 </select>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end', marginTop: 'var(--space-3)' }}>
               <button className="btn btn-secondary btn-sm" onClick={resetUserForm}>
                 {t('common.cancel')}
               </button>
@@ -204,7 +224,7 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Members List */}
+        {/* Members Table */}
         <div className="data-table-wrapper" style={{ border: 'none' }}>
           <table className="data-table">
             <thead>
@@ -218,7 +238,7 @@ export default function Settings() {
             </thead>
             <tbody>
               {members.map((member) => {
-                const taskCount = useAppStore.getState().tasks.filter((t) => t.assigned_to === member.id).length;
+                const taskCount = tasks.filter((t) => t.assigned_to === member.id).length;
                 return (
                   <tr key={member.id}>
                     <td>
@@ -241,11 +261,22 @@ export default function Settings() {
                         {member.role === 'admin' ? 'Admin' : 'Member'}
                       </span>
                     </td>
-                    <td>{taskCount}</td>
+                    <td>{taskCount} tasks</td>
                     <td>
-                      <button className="btn btn-ghost btn-sm" onClick={() => handleEditUser(member)}>
-                        {t('common.edit')}
-                      </button>
+                      <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => handleEditUser(member)}>
+                          <Edit2 size={14} />
+                          {t('common.edit')}
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: 'var(--color-danger)' }}
+                          onClick={() => setDeletingUser(member)}
+                        >
+                          <Trash2 size={14} />
+                          {t('common.delete')}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -254,6 +285,39 @@ export default function Settings() {
           </table>
         </div>
       </div>
+
+      {/* Delete User Confirmation Modal */}
+      {deletingUser && (
+        <>
+          <div className="modal-backdrop" onClick={() => setDeletingUser(null)} />
+          <div className="modal">
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-danger)' }}>
+                <AlertCircle size={20} />
+                Remove Team Member?
+              </h3>
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setDeletingUser(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
+                Are you sure you want to remove <strong>{deletingUser.name}</strong> (@{deletingUser.username}) from the team?
+              </p>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-2)' }}>
+                This action cannot be undone. Any tasks assigned to this member will remain in the database and can be reassigned.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setDeletingUser(null)}>
+                {t('common.cancel')}
+              </button>
+              <button className="btn btn-danger" onClick={handleDeleteUserConfirm} disabled={deleting}>
+                {deleting ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
+                Remove Member
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       <style>{`
         .spin { animation: spin 1s linear infinite; }

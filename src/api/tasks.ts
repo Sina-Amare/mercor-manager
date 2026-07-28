@@ -260,6 +260,15 @@ export async function updateUser(
   }
 }
 
+export async function deleteUser(id: string): Promise<void> {
+  try {
+    await pb.collection('users').delete(id);
+  } catch {
+    localUsers = localUsers.filter((u) => u.id !== id);
+    saveLocalState();
+  }
+}
+
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export async function fetchSettings(): Promise<AppSettings> {

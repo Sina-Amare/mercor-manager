@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Search, Trash2, ArrowRightLeft, Eye, ChevronUp, ChevronDown } from 'lucide-react';
 import type { Task, TaskStatus } from '../../types';
+import { TASK_STATUSES, STATUS_CONFIG } from '../../types';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../../store';
 import StatusBadge from '../shared/StatusBadge';
 import DateDisplay from '../shared/DateDisplay';
@@ -28,12 +29,13 @@ export default function TaskTable({
   showActions = true,
 }: Props) {
   const { user } = useAuthStore();
-  const { t } = useLanguageStore();
+  const { t, language } = useLanguageStore();
   const { selectedTaskIds, toggleTaskSelection, selectAllTasks, clearSelection, setTaskDetail, taskDetailId, removeTask, removeTasks, members, settings, updateTask } = useAppStore();
   const { addToast } = useToastStore();
   const isAdmin = user?.role === 'admin';
 
   const [search, setSearch] = useState('');
+  const [activeStatusFilter, setActiveStatusFilter] = useState<string>('all');
   const [sortKey, setSortKey] = useState<SortKey>('created');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [reassignModalOpen, setReassignModalOpen] = useState(false);
@@ -42,6 +44,13 @@ export default function TaskTable({
   // Filter & Sort
   const filteredTasks = useMemo(() => {
     let result = inputTasks;
+
+    // Filter by status pill
+    if (activeStatusFilter !== 'all') {
+      result = result.filter((t) => t.status === activeStatusFilter);
+    }
+
+    // Filter by search query
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(
@@ -51,6 +60,7 @@ export default function TaskTable({
           t.expand?.assigned_to?.name?.toLowerCase().includes(q)
       );
     }
+
     result.sort((a, b) => {
       let aVal: string | number = '';
       let bVal: string | number = '';
@@ -81,7 +91,7 @@ export default function TaskTable({
       return 0;
     });
     return result;
-  }, [inputTasks, search, sortKey, sortDir]);
+  }, [inputTasks, activeStatusFilter, search, sortKey, sortDir]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -109,7 +119,7 @@ export default function TaskTable({
     try {
       await deleteTask(id);
       removeTask(id);
-      addToast('Task deleted', 'success');
+      addToast('Task deleted successfully', 'success');
     } catch {
       addToast('Failed to delete task', 'error');
     }
@@ -153,6 +163,30 @@ export default function TaskTable({
         </div>
       </div>
 
+      {/* Filter Pills Bar */}
+      <div className="filter-pills">
+        <button
+          className={`filter-pill ${activeStatusFilter === 'all' ? 'active' : ''}`}
+          onClick={() => setActiveStatusFilter('all')}
+        >
+          All Tasks ({inputTasks.length})
+        </button>
+        {TASK_STATUSES.map((statusKey) => {
+          const count = inputTasks.filter((t) => t.status === statusKey).length;
+          if (count === 0 && !['assigned', 'working', 'swf', 'swof', 'approved'].includes(statusKey)) return null;
+          const conf = STATUS_CONFIG[statusKey];
+          return (
+            <button
+              key={statusKey}
+              className={`filter-pill ${activeStatusFilter === statusKey ? 'active' : ''}`}
+              onClick={() => setActiveStatusFilter(statusKey)}
+            >
+              {conf.icon} {language === 'fa' ? conf.labelFa : conf.label} ({count})
+            </button>
+          );
+        })}
+      </div>
+
       <div className="data-table-wrapper">
         <div className="data-table-toolbar">
           <div className="data-table-search">
@@ -165,8 +199,8 @@ export default function TaskTable({
             />
           </div>
           <div className="data-table-filters">
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
-              {filteredTasks.length} {t('common.total')}
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontWeight: 'var(--weight-medium)' }}>
+              Showing {filteredTasks.length} {t('common.of')} {inputTasks.length}
             </span>
           </div>
         </div>

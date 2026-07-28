@@ -4,19 +4,19 @@ import {
   Upload,
   ListTodo,
   Users,
-  FolderKanban,
   CreditCard,
   Settings,
   LogOut,
   ClipboardList,
   Hammer,
-  History,
   Wallet,
   Menu,
   X,
+  ChevronRight,
 } from 'lucide-react';
 import { useAuthStore, useLanguageStore, useAppStore } from '../../store';
 import { logout } from '../../api/auth';
+import { useState } from 'react';
 
 export default function Sidebar() {
   const { user } = useAuthStore();
@@ -25,20 +25,18 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
 
+  const [membersOpen, setMembersOpen] = useState(true);
+
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
-
-  const getStatusCount = (status: string) =>
-    tasks.filter((t) => t.status === status).length;
 
   const getMemberTaskCount = (memberId: string) =>
     tasks.filter((t) => t.assigned_to === memberId).length;
 
   return (
     <>
-      {/* Mobile menu button */}
       <button
         className="sidebar-mobile-toggle btn btn-icon btn-ghost"
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -54,7 +52,7 @@ export default function Sidebar() {
       </button>
 
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
-        {/* Logo */}
+        {/* Brand Header */}
         <div className="sidebar-logo">
           <div className="sidebar-logo-icon">A</div>
           <div>
@@ -63,26 +61,27 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* Admin Navigation */}
         {isAdmin ? (
+          /* Admin Menu */
           <>
             <div className="sidebar-section">
+              <div className="sidebar-section-title">Main Workspace</div>
               <ul className="sidebar-nav">
                 <li>
                   <NavLink to="/" end className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                    <LayoutDashboard size={20} className="sidebar-link-icon" />
+                    <LayoutDashboard size={18} className="sidebar-link-icon" />
                     {t('nav.dashboard')}
                   </NavLink>
                 </li>
                 <li>
                   <NavLink to="/upload" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                    <Upload size={20} className="sidebar-link-icon" />
+                    <Upload size={18} className="sidebar-link-icon" />
                     {t('nav.upload_tasks')}
                   </NavLink>
                 </li>
                 <li>
                   <NavLink to="/tasks" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                    <ListTodo size={20} className="sidebar-link-icon" />
+                    <ListTodo size={18} className="sidebar-link-icon" />
                     {t('nav.all_tasks')}
                     <span className="sidebar-link-badge">{tasks.length}</span>
                   </NavLink>
@@ -90,72 +89,47 @@ export default function Sidebar() {
               </ul>
             </div>
 
-            {/* By Member */}
+            {/* Team Members Collapsible */}
             <div className="sidebar-section">
-              <div className="sidebar-section-title">{t('nav.by_member')}</div>
-              <ul className="sidebar-nav">
-                {members.map((member) => (
-                  <li key={member.id}>
-                    <NavLink
-                      to={`/member/${member.id}`}
-                      className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-                    >
-                      <Users size={20} className="sidebar-link-icon" />
-                      {member.name}
-                      <span className="sidebar-link-badge">{getMemberTaskCount(member.id)}</span>
-                    </NavLink>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* By Status */}
-            <div className="sidebar-section">
-              <div className="sidebar-section-title">{t('nav.by_status')}</div>
-              <ul className="sidebar-nav">
-                {[
-                  { status: 'assigned', icon: ClipboardList },
-                  { status: 'working', icon: Hammer },
-                  { status: 'swf', icon: FolderKanban },
-                  { status: 'swof', icon: FolderKanban },
-                  { status: 'member_discarded', icon: FolderKanban },
-                  { status: 'on_hold', icon: FolderKanban },
-                  { status: 'in_studio', icon: FolderKanban },
-                  { status: 'in_review', icon: FolderKanban },
-                  { status: 'approved', icon: FolderKanban },
-                  { status: 'sent_back', icon: FolderKanban },
-                  { status: 'admin_discarded', icon: FolderKanban },
-                ].map(({ status, icon: Icon }) => {
-                  const count = getStatusCount(status);
-                  if (count === 0 && !['assigned', 'working', 'swf', 'swof', 'approved'].includes(status)) return null;
-                  return (
-                    <li key={status}>
+              <div
+                className="sidebar-section-title"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                onClick={() => setMembersOpen(!membersOpen)}
+              >
+                <span>{t('nav.by_member')}</span>
+                <ChevronRight size={14} style={{ transform: membersOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
+              </div>
+              {membersOpen && (
+                <ul className="sidebar-nav">
+                  {members.map((member) => (
+                    <li key={member.id}>
                       <NavLink
-                        to={`/status/${status}`}
+                        to={`/member/${member.id}`}
                         className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
                       >
-                        <Icon size={20} className="sidebar-link-icon" />
-                        {t(`status.${status}`)}
-                        <span className="sidebar-link-badge">{count}</span>
+                        <Users size={18} className="sidebar-link-icon" />
+                        {member.name}
+                        <span className="sidebar-link-badge">{getMemberTaskCount(member.id)}</span>
                       </NavLink>
                     </li>
-                  );
-                })}
-              </ul>
+                  ))}
+                </ul>
+              )}
             </div>
 
-            {/* Bottom */}
-            <div className="sidebar-section">
+            {/* Financials & Admin Controls */}
+            <div className="sidebar-section" style={{ marginTop: 'auto' }}>
+              <div className="sidebar-section-title">Administration</div>
               <ul className="sidebar-nav">
                 <li>
                   <NavLink to="/payments" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                    <CreditCard size={20} className="sidebar-link-icon" />
+                    <CreditCard size={18} className="sidebar-link-icon" />
                     {t('nav.payments')}
                   </NavLink>
                 </li>
                 <li>
                   <NavLink to="/settings" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                    <Settings size={20} className="sidebar-link-icon" />
+                    <Settings size={18} className="sidebar-link-icon" />
                     {t('nav.settings')}
                   </NavLink>
                 </li>
@@ -163,19 +137,20 @@ export default function Sidebar() {
             </div>
           </>
         ) : (
-          /* Member Navigation */
+          /* Member Menu */
           <>
             <div className="sidebar-section">
+              <div className="sidebar-section-title">My Work</div>
               <ul className="sidebar-nav">
                 <li>
                   <NavLink to="/" end className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                    <LayoutDashboard size={20} className="sidebar-link-icon" />
+                    <LayoutDashboard size={18} className="sidebar-link-icon" />
                     {t('nav.my_dashboard')}
                   </NavLink>
                 </li>
                 <li>
                   <NavLink to="/my-tasks" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                    <ClipboardList size={20} className="sidebar-link-icon" />
+                    <ClipboardList size={18} className="sidebar-link-icon" />
                     {t('nav.my_tasks')}
                     <span className="sidebar-link-badge">
                       {tasks.filter((t) => t.assigned_to === user?.id && t.status === 'assigned').length}
@@ -184,7 +159,7 @@ export default function Sidebar() {
                 </li>
                 <li>
                   <NavLink to="/working" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                    <Hammer size={20} className="sidebar-link-icon" />
+                    <Hammer size={18} className="sidebar-link-icon" />
                     {t('nav.working')}
                     <span className="sidebar-link-badge">
                       {tasks.filter((t) => t.assigned_to === user?.id && t.status === 'working').length}
@@ -194,36 +169,12 @@ export default function Sidebar() {
               </ul>
             </div>
 
-            <div className="sidebar-section">
-              <div className="sidebar-section-title">{t('nav.my_history')}</div>
-              <ul className="sidebar-nav">
-                {(['swf', 'swof', 'member_discarded', 'in_studio', 'in_review', 'approved', 'sent_back', 'admin_discarded'] as const).map(
-                  (status) => {
-                    const count = tasks.filter(
-                      (t) => t.assigned_to === user?.id && t.status === status
-                    ).length;
-                    return (
-                      <li key={status}>
-                        <NavLink
-                          to={`/my-history/${status}`}
-                          className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-                        >
-                          <History size={20} className="sidebar-link-icon" />
-                          {t(`status.${status}`)}
-                          <span className="sidebar-link-badge">{count}</span>
-                        </NavLink>
-                      </li>
-                    );
-                  }
-                )}
-              </ul>
-            </div>
-
-            <div className="sidebar-section">
+            <div className="sidebar-section" style={{ marginTop: 'auto' }}>
+              <div className="sidebar-section-title">Financials</div>
               <ul className="sidebar-nav">
                 <li>
                   <NavLink to="/my-payments" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                    <Wallet size={20} className="sidebar-link-icon" />
+                    <Wallet size={18} className="sidebar-link-icon" />
                     {t('nav.my_payments')}
                   </NavLink>
                 </li>
@@ -232,7 +183,7 @@ export default function Sidebar() {
           </>
         )}
 
-        {/* User Footer */}
+        {/* User Footer Profile */}
         <div className="sidebar-footer">
           <div className="sidebar-user" onClick={handleLogout} title={t('nav.logout')}>
             <div className="sidebar-user-avatar">

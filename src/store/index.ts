@@ -89,6 +89,7 @@ interface AppState {
   setMembers: (members: User[]) => void;
   addMember: (member: User) => void;
   updateMember: (id: string, updates: Partial<User>) => void;
+  removeMember: (id: string) => void;
   
   setSettings: (settings: AppSettings) => void;
 
@@ -144,6 +145,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
       members: s.members.map((m) =>
         m.id === id ? { ...m, ...updates } as User : m
       ),
+    })),
+  removeMember: (id) =>
+    set((s) => ({
+      members: s.members.filter((m) => m.id !== id),
     })),
 
   setSettings: (settings) => set({ settings }),
