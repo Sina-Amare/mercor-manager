@@ -1,13 +1,19 @@
-import { useAuthStore, useLanguageStore, useAppStore } from '../store';
+import { useState } from 'react';
+import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../store';
 import { formatCurrency, usdToIrr } from '../utils/dates';
 import DateDisplay from '../components/shared/DateDisplay';
 import StatusBadge from '../components/shared/StatusBadge';
+import TaskDetailPanel from '../components/tasks/TaskDetailPanel';
+import { updateTask as apiUpdateTask } from '../api/tasks';
+import type { Task } from '../types';
+import { Edit2, RotateCcw, Eye, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Payments() {
   const { user } = useAuthStore();
   const { t } = useLanguageStore();
-  const { tasks, members, settings } = useAppStore();
+  const { tasks, members, settings, updateTask } = useAppStore();
+  const { addToast } = useToastStore();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
 
@@ -18,6 +24,47 @@ export default function Payments() {
 
   const totalPaidUsd = paidTasks.reduce((sum, t) => sum + t.payment_amount_usd, 0);
   const totalPendingUsd = pendingTasks.reduce((sum, t) => sum + t.payment_amount_usd, 0);
+
+  // Detail panel & Edit payment state
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editUsd, setEditUsd] = useState(0);
+  const [saving, setSaving] = useState(false);
+
+  const handleOpenEditModal = (task: Task) => {
+    setEditingTask(task);
+    setEditUsd(task.payment_amount_usd);
+  };
+
+  const handleSavePaymentAmount = async () => {
+    if (!editingTask) return;
+    setSaving(true);
+    try {
+      const updated = await apiUpdateTask(editingTask.id, {
+        payment_amount_usd: editUsd,
+      } as Partial<Task>);
+      updateTask(editingTask.id, updated);
+      addToast('Payment amount updated successfully', 'success');
+      setEditingTask(null);
+    } catch {
+      addToast('Failed to update payment amount', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRevertPaymentStatus = async (task: Task) => {
+    try {
+      const updated = await apiUpdateTask(task.id, {
+        payment_status: 'pending',
+        payment_date: '',
+      } as Partial<Task>);
+      updateTask(task.id, updated);
+      addToast(`Payment for ${task.task_id} reverted to Pending`, 'success');
+    } catch {
+      addToast('Failed to revert payment', 'error');
+    }
+  };
 
   return (
     <div className="page">
@@ -131,7 +178,8 @@ export default function Payments() {
                   <th>{t('tasks.status')}</th>
                   <th>{t('payments.amount_usd')}</th>
                   <th>IRR</th>
-                  <th>{t('tasks.created')}</th>
+                  <th>Payment Date</th>
+                  <th>{t('tasks.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -155,7 +203,37 @@ export default function Payments() {
                         {formatCurrency(usdToIrr(task.payment_amount_usd, settings.usd_to_irr_rate), 'IRR')}
                       </span>
                     </td>
-                    <td><DateDisplay date={task.payment_date} /></td>
+                    <td><DateDisplay date={task.payment_date || task.updated} /></td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                        <button
+                          className="btn btn-ghost btn-icon btn-sm"
+                          title="View Details"
+                          onClick={() => setSelectedTask(task)}
+                        >
+                          <Eye size={15} />
+                        </button>
+                        {isAdmin && (
+                          <>
+                            <button
+                              className="btn btn-ghost btn-icon btn-sm"
+                              title="Edit Payment Amount"
+                              onClick={() => handleOpenEditModal(task)}
+                            >
+                              <Edit2 size={15} />
+                            </button>
+                            <button
+                              className="btn btn-ghost btn-icon btn-sm"
+                              title="Revert to Pending Payment"
+                              onClick={() => handleRevertPaymentStatus(task)}
+                              style={{ color: 'var(--color-warning)' }}
+                            >
+                              <RotateCcw size={15} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -163,6 +241,54 @@ export default function Payments() {
           )}
         </div>
       </div>
+
+      {/* Edit Payment Modal */}
+      {editingTask && (
+        <>
+          <div className="modal-backdrop" onClick={() => setEditingTask(null)} />
+          <div className="modal">
+            <div className="modal-header">
+              <h3 className="modal-title">Edit Payment: {editingTask.task_id}</h3>
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setEditingTask(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">{t('payments.amount_usd')}</label>
+                <input
+                  type="number"
+                  className="form-input input-mono"
+                  value={editUsd}
+                  onChange={(e) => setEditUsd(Number(e.target.value))}
+                  min={0}
+                  step={0.01}
+                />
+                {editUsd > 0 && (
+                  <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                    = {formatCurrency(usdToIrr(editUsd, settings.usd_to_irr_rate), 'IRR')}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setEditingTask(null)}>
+                {t('common.cancel')}
+              </button>
+              <button className="btn btn-primary" onClick={handleSavePaymentAmount} disabled={saving}>
+                <Save size={16} />
+                Save Amount
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Task Detail Drawer */}
+      {selectedTask && (
+        <>
+          <div className="modal-backdrop" onClick={() => setSelectedTask(null)} />
+          <TaskDetailPanel task={selectedTask} onClose={() => setSelectedTask(null)} />
+        </>
+      )}
     </div>
   );
 }

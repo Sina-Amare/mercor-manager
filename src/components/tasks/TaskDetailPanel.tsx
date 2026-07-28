@@ -103,6 +103,25 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
     }
   };
 
+  const handleRevertPayment = async () => {
+    setSaving(true);
+    try {
+      await apiUpdateTask(task.id, {
+        payment_status: 'pending',
+        payment_date: '',
+      } as Partial<Task>);
+      updateTask(task.id, {
+        payment_status: 'pending',
+        payment_date: '',
+      });
+      addToast('Payment status reverted to Pending', 'success');
+    } catch {
+      addToast('Failed to revert payment', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleReassign = async (newMemberId: string) => {
     setSaving(true);
     try {
@@ -316,13 +335,23 @@ export default function TaskDetailPanel({ task, onClose }: Props) {
                 </button>
               )}
               {task.payment_status === 'paid' && (
-                <div style={{ marginTop: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  <span className="status-badge" style={{ color: 'var(--color-success)', background: 'var(--color-success-bg)' }}>
-                    ✅ {t('payment_status.paid')}
-                  </span>
-                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
-                    <DateDisplay date={task.payment_date} />
-                  </span>
+                <div style={{ marginTop: 'var(--space-3)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+                    <span className="status-badge" style={{ color: 'var(--color-success)', background: 'var(--color-success-bg)' }}>
+                      ✅ {t('payment_status.paid')}
+                    </span>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)' }}>
+                      <DateDisplay date={task.payment_date} />
+                    </span>
+                  </div>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleRevertPayment}
+                    disabled={saving}
+                    style={{ width: '100%', color: 'var(--color-warning)' }}
+                  >
+                    Revert to Pending Payment
+                  </button>
                 </div>
               )}
             </div>
