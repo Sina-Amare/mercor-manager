@@ -86,6 +86,26 @@ twice. `npm run lint` runs `scripts/check-workflow-parity.mjs`, which fails if
 they drift — the failure mode that otherwise shows up as "the button is there
 but the save fails".
 
+### Editing tasks by hand
+
+The guardrail applies to the SQL editor and the Management API too, not just the
+app: neither has a linked AGNUS account, so any `update public.tasks` fails with
+*"No active AGNUS account is linked to this session"*. That is the trigger doing
+its job. For a genuine data repair, take it off for exactly the statements you
+need and put it straight back:
+
+```sql
+alter table public.tasks disable trigger tasks_enforce_transition;
+-- your corrective UPDATE here
+alter table public.tasks enable trigger tasks_enforce_transition;
+```
+
+Confirm it is back on afterwards — `tgenabled` must be `O`:
+
+```sql
+select tgenabled from pg_trigger where tgname = 'tasks_enforce_transition';
+```
+
 ## Realtime
 
 Confirm `tasks` and `prompts` appear under **Database → Publications →
