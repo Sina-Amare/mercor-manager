@@ -1,84 +1,92 @@
 import { useState } from 'react';
+import { Edit2, Eye, RotateCcw, Save } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../store';
 import { formatCurrency, formatNumber, usdToIrr } from '../utils/dates';
 import DateDisplay from '../components/shared/DateDisplay';
 import StatusBadge from '../components/shared/StatusBadge';
-import TaskDetailPanel from '../components/tasks/TaskDetailPanel';
-import { updateTask as apiUpdateTask } from '../api/tasks';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
+import { TaskConflictError, updateTask as apiUpdateTask } from '../api/tasks';
 import type { Task } from '../types';
-import { Edit2, RotateCcw, Eye, Save } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 
 export default function Payments() {
   const { user } = useAuthStore();
   const { t, language } = useLanguageStore();
-  const { tasks, members, settings, updateTask } = useAppStore();
+  const { tasks, members, settings, updateTask, removeTask } = useAppStore();
   const { addToast } = useToastStore();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
   const teamMembers = members.filter((member) => member.role === 'member' && member.is_active);
 
-  // For members, show only their tasks
-  const relevantTasks = isAdmin ? tasks : tasks.filter((t) => t.assigned_to === user?.id);
-  const paidTasks = relevantTasks.filter((t) => t.payment_status === 'paid');
-  const pendingTasks = relevantTasks.filter((t) => t.status === 'approved' && t.payment_status !== 'paid');
+  const relevantTasks = isAdmin ? tasks : tasks.filter((task) => task.assigned_to === user?.id);
+  const paidTasks = relevantTasks.filter((task) => task.payment_status === 'paid');
+  const pendingTasks = relevantTasks.filter(
+    (task) => task.status === 'approved' && task.payment_status !== 'paid'
+  );
 
-  const totalPaidUsd = paidTasks.reduce((sum, t) => sum + t.payment_amount_usd, 0);
-  const totalPendingUsd = pendingTasks.reduce((sum, t) => sum + t.payment_amount_usd, 0);
+  const totalPaidUsd = paidTasks.reduce((sum, task) => sum + task.payment_amount_usd, 0);
+  const totalPendingUsd = pendingTasks.reduce((sum, task) => sum + task.payment_amount_usd, 0);
 
-  // Detail panel & Edit payment state
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editUsd, setEditUsd] = useState(0);
+  const [revertingTask, setRevertingTask] = useState<Task | null>(null);
   const [saving, setSaving] = useState(false);
-  const selectedTask = selectedTaskId
-    ? tasks.find((task) => task.id === selectedTaskId) || null
-    : null;
 
-  const handleOpenEditModal = (task: Task) => {
-    setEditingTask(task);
-    setEditUsd(task.payment_amount_usd);
+  // The same guarded write path the workspace uses. Both payment writes on this
+  // page previously went out with no concurrency guard, so two admins editing
+  // one amount silently overwrote each other.
+  const guardedWrite = async (
+    task: Task,
+    patch: Partial<Task>,
+    messages: { success: string; error: string }
+  ) => {
+    if (saving) return false;
+    setSaving(true);
+    try {
+      const updated = await apiUpdateTask(task.id, patch, {
+        expectedStatus: task.status,
+        expectedAssignee: task.assigned_to,
+        expectedUpdated: task.updated,
+      });
+      updateTask(updated.id, updated);
+      addToast(messages.success, 'success');
+      return true;
+    } catch (error) {
+      if (error instanceof TaskConflictError) {
+        if (error.latestTask) updateTask(error.latestTask.id, error.latestTask);
+        else if (error.latestTask === null) removeTask(task.id);
+        addToast(t('tasks.conflict'), 'warning');
+      } else {
+        addToast(error instanceof Error ? error.message : messages.error, 'error');
+      }
+      return false;
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleSavePaymentAmount = async () => {
+  const handleSaveAmount = async () => {
     if (!editingTask) return;
     if (!Number.isFinite(editUsd) || editUsd < 0) {
-      addToast('Enter a valid non-negative payment amount', 'error');
+      addToast(t('payments.invalid_amount'), 'error');
       return;
     }
-    setSaving(true);
-    try {
-      const updated = await apiUpdateTask(editingTask.id, {
-        payment_amount_usd: editUsd,
-      } as Partial<Task>);
-      updateTask(editingTask.id, updated);
-      addToast('Payment amount updated successfully', 'success');
-      setEditingTask(null);
-    } catch {
-      addToast('Failed to update payment amount', 'error');
-    } finally {
-      setSaving(false);
-    }
+    const ok = await guardedWrite(
+      editingTask,
+      { payment_amount_usd: editUsd },
+      { success: t('payments.amount_saved'), error: t('payments.amount_save_error') }
+    );
+    if (ok) setEditingTask(null);
   };
 
-  const [revertingTask, setRevertingTask] = useState<Task | null>(null);
-
-  const confirmRevertPaymentStatus = async () => {
-    if (!revertingTask || saving) return;
-    setSaving(true);
-    try {
-      const updated = await apiUpdateTask(revertingTask.id, {
-        payment_status: 'pending',
-        payment_date: '',
-      } as Partial<Task>);
-      updateTask(revertingTask.id, updated);
-      addToast(`Payment for ${revertingTask.task_id} reverted to Pending`, 'success');
-    } catch {
-      addToast('Failed to revert payment', 'error');
-    } finally {
-      setSaving(false);
-      setRevertingTask(null);
-    }
+  const handleRevert = async () => {
+    if (!revertingTask) return;
+    const ok = await guardedWrite(
+      revertingTask,
+      { payment_status: 'pending', payment_date: '' },
+      { success: t('payments.reverted_pending'), error: t('payments.revert_error') }
+    );
+    if (ok) setRevertingTask(null);
   };
 
   return (
@@ -90,11 +98,10 @@ export default function Payments() {
         </div>
       </div>
 
-      {/* Summary */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
+      <div className="stats-grid stats-grid-compact">
         <div className="stat-card">
           <span className="stat-card-label">{t('dashboard.total_paid')}</span>
-          <span className="stat-card-value" style={{ color: 'var(--color-success)' }}>
+          <span className="stat-card-value stat-card-value-success">
             {formatCurrency(totalPaidUsd, 'USD', language)}
           </span>
           <span className="payment-amount-irr">
@@ -103,7 +110,7 @@ export default function Payments() {
         </div>
         <div className="stat-card">
           <span className="stat-card-label">{t('dashboard.pending_payment')}</span>
-          <span className="stat-card-value" style={{ color: 'var(--color-warning)' }}>
+          <span className="stat-card-value stat-card-value-warning">
             {formatCurrency(totalPendingUsd, 'USD', language)}
           </span>
           <span className="payment-amount-irr">
@@ -120,27 +127,29 @@ export default function Payments() {
         </div>
       </div>
 
-      {/* Admin: Per-member table */}
       {isAdmin && (
-        <div className="data-table-wrapper" style={{ marginTop: 'var(--space-6)' }}>
+        <div className="data-table-wrapper section-gap">
           <table className="data-table">
+            <caption className="sr-only">{t('payments.per_member')}</caption>
             <thead>
               <tr>
-                <th>{t('payments.member')}</th>
-                <th>{t('payments.tasks_approved')}</th>
-                <th>{t('payments.tasks_paid')}</th>
-                <th>{t('payments.tasks_pending')}</th>
-                <th>{t('payments.total_usd')}</th>
-                <th>{t('payments.total_irr')}</th>
+                <th scope="col">{t('payments.member')}</th>
+                <th scope="col">{t('payments.tasks_approved')}</th>
+                <th scope="col">{t('payments.tasks_paid')}</th>
+                <th scope="col">{t('payments.tasks_pending')}</th>
+                <th scope="col">{t('payments.total_usd')}</th>
+                <th scope="col">{t('payments.total_irr')}</th>
               </tr>
             </thead>
             <tbody>
               {teamMembers.map((member) => {
-                const mTasks = tasks.filter((t) => t.assigned_to === member.id);
-                const mApproved = mTasks.filter((t) => t.status === 'approved').length;
-                const mPaid = mTasks.filter((t) => t.payment_status === 'paid');
-                const mPending = mTasks.filter((t) => t.status === 'approved' && t.payment_status !== 'paid');
-                const mTotalPaid = mPaid.reduce((s, t) => s + t.payment_amount_usd, 0);
+                const memberTasks = tasks.filter((task) => task.assigned_to === member.id);
+                const approved = memberTasks.filter((task) => task.status === 'approved').length;
+                const paid = memberTasks.filter((task) => task.payment_status === 'paid');
+                const pending = memberTasks.filter(
+                  (task) => task.status === 'approved' && task.payment_status !== 'paid'
+                );
+                const totalPaid = paid.reduce((sum, task) => sum + task.payment_amount_usd, 0);
 
                 return (
                   <tr
@@ -149,31 +158,41 @@ export default function Payments() {
                     tabIndex={0}
                     onClick={() => navigate(`/member/${member.id}`)}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
+                      if (event.key === 'Enter') {
                         event.preventDefault();
                         navigate(`/member/${member.id}`);
                       }
                     }}
                   >
-                    <td>
+                    <td data-label={t('payments.member')}>
                       <div className="member-cell">
-                        <div className="member-avatar">{member.name.charAt(0).toUpperCase()}</div>
+                        <div className="member-avatar" aria-hidden="true">
+                          {member.name.charAt(0).toUpperCase()}
+                        </div>
                         {member.name}
                       </div>
                     </td>
-                    <td>{formatNumber(mApproved, language)}</td>
-                    <td style={{ color: 'var(--color-success)', fontWeight: 'var(--weight-semibold)' }}>
-                      {formatNumber(mPaid.length, language)}
+                    <td data-label={t('payments.tasks_approved')}>
+                      {formatNumber(approved, language)}
                     </td>
-                    <td style={{ color: 'var(--color-warning)', fontWeight: 'var(--weight-semibold)' }}>
-                      {formatNumber(mPending.length, language)}
+                    <td data-label={t('payments.tasks_paid')} className="cell-success">
+                      {formatNumber(paid.length, language)}
                     </td>
-                    <td>
-                      <span className="payment-amount">{formatCurrency(mTotalPaid, 'USD', language)}</span>
+                    <td data-label={t('payments.tasks_pending')} className="cell-warning">
+                      {formatNumber(pending.length, language)}
                     </td>
-                    <td>
+                    <td data-label={t('payments.total_usd')}>
+                      <span className="payment-amount">
+                        {formatCurrency(totalPaid, 'USD', language)}
+                      </span>
+                    </td>
+                    <td data-label={t('payments.total_irr')}>
                       <span className="payment-amount-irr">
-                        {formatCurrency(usdToIrr(mTotalPaid, settings.usd_to_irr_rate), 'IRR', language)}
+                        {formatCurrency(
+                          usdToIrr(totalPaid, settings.usd_to_irr_rate),
+                          'IRR',
+                          language
+                        )}
                       </span>
                     </td>
                   </tr>
@@ -184,58 +203,74 @@ export default function Payments() {
         </div>
       )}
 
-      {/* Task payment history */}
-      <div style={{ marginTop: 'var(--space-6)' }}>
-        <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)', marginBottom: 'var(--space-4)' }}>
-          {t('payments.tasks_paid')}
-        </h2>
+      <section className="section-gap">
+        <h2 className="section-heading">{t('payments.tasks_paid')}</h2>
         <div className="data-table-wrapper">
           {paidTasks.length === 0 ? (
             <div className="data-table-empty">
-              <div className="data-table-empty-icon">💰</div>
+              <div className="data-table-empty-icon" aria-hidden="true">
+                💰
+              </div>
               <div className="data-table-empty-text">{t('payments.no_paid_tasks')}</div>
             </div>
           ) : (
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>{t('tasks.task_id')}</th>
-                  {isAdmin && <th>{t('tasks.assigned_to')}</th>}
-                  <th>{t('tasks.status')}</th>
-                  <th>{t('payments.amount_usd')}</th>
-                  <th>IRR</th>
-                  <th>{t('payments.payment_date')}</th>
-                  <th>{t('tasks.actions')}</th>
+                  <th scope="col">{t('tasks.task_id')}</th>
+                  {isAdmin && <th scope="col">{t('tasks.assigned_to')}</th>}
+                  <th scope="col">{t('tasks.status')}</th>
+                  <th scope="col">{t('payments.amount_usd')}</th>
+                  <th scope="col">{t('payments.total_irr')}</th>
+                  <th scope="col">{t('payments.payment_date')}</th>
+                  <th scope="col">{t('tasks.actions')}</th>
                 </tr>
               </thead>
               <tbody>
                 {paidTasks.map((task) => (
                   <tr key={task.id}>
-                    <td><span className="task-id">{task.task_id}</span></td>
+                    <td data-label={t('tasks.task_id')}>
+                      <span className="task-id">{task.task_id}</span>
+                    </td>
                     {isAdmin && (
-                      <td>
+                      <td data-label={t('tasks.assigned_to')}>
                         <div className="member-cell">
-                          <div className="member-avatar">
+                          <div className="member-avatar" aria-hidden="true">
                             {task.expand?.assigned_to?.name?.charAt(0).toUpperCase() || '?'}
                           </div>
                           {task.expand?.assigned_to?.name || '—'}
                         </div>
                       </td>
                     )}
-                    <td><StatusBadge status={task.status} /></td>
-                    <td><span className="payment-amount">{formatCurrency(task.payment_amount_usd, 'USD', language)}</span></td>
-                    <td>
-                      <span className="payment-amount-irr">
-                        {formatCurrency(usdToIrr(task.payment_amount_usd, settings.usd_to_irr_rate), 'IRR', language)}
+                    <td data-label={t('tasks.status')}>
+                      <StatusBadge status={task.status} />
+                    </td>
+                    <td data-label={t('payments.amount_usd')}>
+                      <span className="payment-amount">
+                        {formatCurrency(task.payment_amount_usd, 'USD', language)}
                       </span>
                     </td>
-                    <td><DateDisplay date={task.payment_date || task.updated} /></td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                    <td data-label={t('payments.total_irr')}>
+                      <span className="payment-amount-irr">
+                        {formatCurrency(
+                          usdToIrr(task.payment_amount_usd, settings.usd_to_irr_rate),
+                          'IRR',
+                          language
+                        )}
+                      </span>
+                    </td>
+                    <td data-label={t('payments.payment_date')}>
+                      <DateDisplay date={task.payment_date || task.updated} />
+                    </td>
+                    <td data-label={t('tasks.actions')}>
+                      <div className="row-actions">
+                        {/* A task opens in one place: the workspace. This used
+                            to open a cramped drawer showing the same content. */}
                         <button
                           className="btn btn-ghost btn-icon btn-sm"
-                          title="View Details"
-                          onClick={() => setSelectedTaskId(task.id)}
+                          title={t('tasks.open_workspace')}
+                          aria-label={`${t('tasks.open_workspace')}: ${task.task_id}`}
+                          onClick={() => navigate(`/task/${task.id}`)}
                         >
                           <Eye size={15} />
                         </button>
@@ -243,16 +278,20 @@ export default function Payments() {
                           <>
                             <button
                               className="btn btn-ghost btn-icon btn-sm"
-                              title="Edit Payment Amount"
-                              onClick={() => handleOpenEditModal(task)}
+                              title={t('payments.edit_amount')}
+                              aria-label={`${t('payments.edit_amount')}: ${task.task_id}`}
+                              onClick={() => {
+                                setEditingTask(task);
+                                setEditUsd(task.payment_amount_usd);
+                              }}
                             >
                               <Edit2 size={15} />
                             </button>
                             <button
-                              className="btn btn-ghost btn-icon btn-sm"
-                              title="Revert to Pending Payment"
+                              className="btn btn-ghost btn-icon btn-sm btn-icon-warning"
+                              title={t('payments.revert_pending')}
+                              aria-label={`${t('payments.revert_pending')}: ${task.task_id}`}
                               onClick={() => setRevertingTask(task)}
-                              style={{ color: 'var(--color-warning)' }}
                             >
                               <RotateCcw size={15} />
                             </button>
@@ -266,87 +305,60 @@ export default function Payments() {
             </table>
           )}
         </div>
-      </div>
+      </section>
 
-      {/* Revert Payment Confirmation Modal */}
-      {revertingTask && (
-        <>
-          <div className="modal-backdrop" onClick={() => setRevertingTask(null)} />
-          <div className="modal" role="dialog" aria-modal="true">
-            <div className="modal-header">
-              <h3 className="modal-title" style={{ color: 'var(--color-warning)' }}>Revert Payment to Pending?</h3>
-              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setRevertingTask(null)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
-                Are you sure you want to revert the payment for task <strong>{revertingTask.task_id}</strong> (${revertingTask.payment_amount_usd}) back to <strong>Pending Payment</strong>?
-              </p>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setRevertingTask(null)}>
-                {t('common.cancel')}
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={confirmRevertPaymentStatus}
-                disabled={saving}
-                style={{ background: 'var(--color-warning)', borderColor: 'var(--color-warning)' }}
-              >
-                <RotateCcw size={16} />
-                Revert to Pending
-              </button>
-            </div>
-          </div>
-        </>
-      )}
+      <ConfirmDialog
+        open={Boolean(revertingTask)}
+        title={t('payments.revert_title')}
+        tone="warning"
+        busy={saving}
+        confirmLabel={t('payments.revert_pending')}
+        onCancel={() => setRevertingTask(null)}
+        onConfirm={() => void handleRevert()}
+      >
+        <p className="confirm-copy">
+          {t('payments.revert_confirm_detail')
+            .replace('{task}', revertingTask?.task_id || '')
+            .replace(
+              '{amount}',
+              formatCurrency(revertingTask?.payment_amount_usd || 0, 'USD', language)
+            )}
+        </p>
+      </ConfirmDialog>
 
-      {/* Edit Payment Modal */}
-      {editingTask && (
-        <>
-          <div className="modal-backdrop" onClick={() => setEditingTask(null)} />
-          <div className="modal" role="dialog" aria-modal="true">
-            <div className="modal-header">
-              <h3 className="modal-title">Edit Payment: {editingTask.task_id}</h3>
-              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setEditingTask(null)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">{t('payments.amount_usd')}</label>
-                <input
-                  type="number"
-                  className="form-input input-mono"
-                  value={editUsd}
-                  onChange={(e) => setEditUsd(Number(e.target.value))}
-                  min={0}
-                  step={0.01}
-                />
-                {editUsd > 0 && (
-                  <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                    = {formatCurrency(usdToIrr(editUsd, settings.usd_to_irr_rate), 'IRR', language)}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setEditingTask(null)}>
-                {t('common.cancel')}
-              </button>
-              <button className="btn btn-primary" onClick={handleSavePaymentAmount} disabled={saving}>
-                <Save size={16} />
-                Save Amount
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Task Detail Drawer */}
-      {selectedTask && (
-        <>
-          <div className="modal-backdrop" onClick={() => setSelectedTaskId(null)} />
-          <TaskDetailPanel task={selectedTask} onClose={() => setSelectedTaskId(null)} />
-        </>
-      )}
+      <ConfirmDialog
+        open={Boolean(editingTask)}
+        title={`${t('payments.edit_amount')} — ${editingTask?.task_id || ''}`}
+        busy={saving}
+        confirmLabel={t('common.save')}
+        onCancel={() => setEditingTask(null)}
+        onConfirm={() => void handleSaveAmount()}
+      >
+        <div className="form-group">
+          <label className="form-label" htmlFor="payment-edit-amount">
+            {t('payments.amount_usd')}
+          </label>
+          <input
+            id="payment-edit-amount"
+            type="number"
+            className="form-input input-mono"
+            value={editUsd}
+            onChange={(event) => setEditUsd(Number(event.target.value))}
+            min={0}
+            step={0.01}
+            data-autofocus
+          />
+          {editUsd > 0 && (
+            <p className="payment-conversion">
+              = {formatCurrency(usdToIrr(editUsd, settings.usd_to_irr_rate), 'IRR', language)}
+            </p>
+          )}
+        </div>
+        <p className="confirm-note">
+          <Save size={13} aria-hidden="true" />
+          {t('payments.edit_amount_note')}
+        </p>
+      </ConfirmDialog>
     </div>
   );
 }

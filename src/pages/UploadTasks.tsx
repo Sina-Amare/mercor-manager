@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { Upload as UploadIcon, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { useLanguageStore, useAppStore, useToastStore } from '../store';
 import { createTask, checkDuplicateTaskId } from '../api/tasks';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
 
 export default function UploadTasks() {
   const { t } = useLanguageStore();
@@ -236,49 +237,23 @@ export default function UploadTasks() {
         </form>
       </div>
 
-      {/* Upload Confirmation Modal */}
-      {showConfirmModal && (
-        <>
-          <div className="modal-backdrop" onClick={() => setShowConfirmModal(false)} />
-          <div className="modal" role="dialog" aria-modal="true">
-            <div className="modal-header">
-              <h3 className="modal-title">Confirm Task Assignment</h3>
-              <button
-                className="btn btn-ghost btn-icon btn-sm"
-                onClick={() => setShowConfirmModal(false)}
-                aria-label={t('common.close')}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="modal-body">
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
-                Are you sure you want to create task <strong className="input-mono">{taskId}</strong> and assign it to <strong>{assignedMember?.name}</strong> (@{assignedMember?.username})?
-              </p>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowConfirmModal(false)}>
-                {t('common.cancel')}
-              </button>
-              <button className="btn btn-primary" onClick={handleConfirmUpload} disabled={loading}>
-                <UploadIcon size={16} />
-                Confirm & Create Task
-              </button>
-            </div>
-          </div>
-        </>
-      )}
+      {/* Creating a task hands work to a named person, so it confirms — and now
+          says who, in their language. */}
+      <ConfirmDialog
+        open={showConfirmModal}
+        title={t('upload.confirm_title')}
+        confirmLabel={t('upload.confirm_action')}
+        busy={loading}
+        onCancel={() => setShowConfirmModal(false)}
+        onConfirm={() => void handleConfirmUpload()}
+      >
+        <p className="confirm-copy">
+          {t('upload.confirm_body')
+            .replace('{task}', taskId)
+            .replace('{member}', assignedMember?.name || '')}
+        </p>
+      </ConfirmDialog>
 
-      {/* Spinner animation */}
-      <style>{`
-        .spin {
-          animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }

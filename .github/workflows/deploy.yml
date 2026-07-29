@@ -35,8 +35,16 @@ jobs:
       - name: Lint project
         run: npm run lint
 
+      # src/api/supabase.ts no longer carries baked-in credentials, so the build
+      # takes them from repository configuration. They live as *variables*
+      # because a publishable key is public by design — it ships in the bundle
+      # either way, and RLS is what protects the data. Secrets are accepted too,
+      # for anyone who prefers them.
       - name: Build project
         run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v6

@@ -19,6 +19,8 @@ import {
   subscribeToPrompts,
   updatePrompt,
 } from '../api/prompts';
+import { searchPrompts } from '../api/ai';
+import useAiAvailable from '../hooks/useAiAvailable';
 import type { PromptVisibility, SavedPrompt } from '../types';
 import DateDisplay from '../components/shared/DateDisplay';
 import CopyButton from '../components/shared/CopyButton';
@@ -52,6 +54,9 @@ export default function Prompts() {
   const [saving, setSaving] = useState(false);
   const [deletingPrompt, setDeletingPrompt] = useState<SavedPrompt | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [semanticIds, setSemanticIds] = useState<string[]>([]);
+  const [semanticBusy, setSemanticBusy] = useState(false);
+  const aiAvailable = useAiAvailable();
 
   useEffect(() => {
     if (!user) return;
@@ -124,13 +129,11 @@ export default function Prompts() {
       }
     );
 
+    // Realtime plus focus/visibility reconcile; no background poll.
     const handleFocus = () => void refresh();
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') void refresh();
     };
-    const syncTimer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refresh();
-    }, 4000);
 
     void refresh();
     window.addEventListener('focus', handleFocus);
@@ -139,7 +142,6 @@ export default function Prompts() {
 
     return () => {
       active = false;
-      window.clearInterval(syncTimer);
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('online', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
@@ -149,14 +151,56 @@ export default function Prompts() {
 
   const publicCount = prompts.filter((prompt) => prompt.visibility === 'public').length;
   const personalCount = prompts.filter((prompt) => prompt.visibility === 'personal').length;
-  const visiblePrompts = useMemo(() => {
+
+  const tabPrompts = useMemo(
+    () => prompts.filter((prompt) => prompt.visibility === activeTab),
+    [activeTab, prompts]
+  );
+
+  const literalMatches = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase();
-    return prompts.filter((prompt) => {
-      if (prompt.visibility !== activeTab) return false;
-      if (!normalizedSearch) return true;
-      return `${prompt.title}\n${prompt.body}`.toLocaleLowerCase().includes(normalizedSearch);
-    });
-  }, [activeTab, prompts, search]);
+    if (!normalizedSearch) return tabPrompts;
+    return tabPrompts.filter((prompt) =>
+      `${prompt.title}\n${prompt.body}`.toLocaleLowerCase().includes(normalizedSearch)
+    );
+  }, [search, tabPrompts]);
+
+  // Substring search only finds the words you happened to remember. When it
+  // comes up empty on a real query, fall back to ranking by meaning.
+  const visiblePrompts = useMemo(() => {
+    if (semanticIds.length === 0) return literalMatches;
+    const order = new Map(semanticIds.map((id, index) => [id, index]));
+    return tabPrompts
+      .filter((prompt) => order.has(prompt.id))
+      .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  }, [literalMatches, semanticIds, tabPrompts]);
+
+  useEffect(() => {
+    setSemanticIds([]);
+    const query = search.trim();
+    if (!aiAvailable || query.length < 3 || literalMatches.length > 0) return;
+
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setSemanticBusy(true);
+      searchPrompts(
+        query,
+        tabPrompts.map((prompt) => ({
+          id: prompt.id,
+          title: prompt.title,
+          body: prompt.body,
+        }))
+      )
+        .then((ids) => active && setSemanticIds(ids))
+        .catch(() => active && setSemanticIds([]))
+        .finally(() => active && setSemanticBusy(false));
+    }, 600);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [aiAvailable, literalMatches.length, search, tabPrompts]);
 
   const openCreate = (visibility: PromptVisibility) => {
     setEditingPrompt(null);
@@ -297,7 +341,11 @@ export default function Prompts() {
         </div>
 
         <label className="prompts-search">
-          <Search size={17} aria-hidden="true" />
+          {semanticBusy ? (
+            <Loader2 size={17} className="spin" aria-hidden="true" />
+          ) : (
+            <Search size={17} aria-hidden="true" />
+          )}
           <input
             type="search"
             value={search}
@@ -352,6 +400,11 @@ export default function Prompts() {
         </div>
       ) : (
         <div className="prompts-grid">
+          {semanticIds.length > 0 && (
+            <p className="prompts-semantic-note" role="status">
+              {t('ai.semantic_results')}
+            </p>
+          )}
           {visiblePrompts.map((prompt) => {
             const creator = members.find((member) => member.id === prompt.created_by);
             return (

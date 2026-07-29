@@ -1,21 +1,57 @@
-import { useEffect, useState } from 'react';
-import { UserPlus, Save, Loader2, Trash2, Edit2, AlertCircle, Eye, EyeOff, Download, UploadCloud, RefreshCw } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  AlertTriangle,
+  Download,
+  Edit2,
+  Eye,
+  EyeOff,
+  Loader2,
+  Save,
+  ShieldCheck,
+  Trash2,
+  UploadCloud,
+  UserCheck,
+  UserMinus,
+  UserPlus,
+} from 'lucide-react';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../store';
-import { createUser, updateUser as apiUpdateUser, deleteUser as apiDeleteUser, updateSettings, exportLocalBackup, importLocalBackup } from '../api/tasks';
+import { exportBackup, importBackup, updateSettings } from '../api/tasks';
+import { createUser, deleteUser, setUserActive, updateUser } from '../api/users';
+import ConfirmDialog, { type ConfirmTone } from '../components/shared/ConfirmDialog';
 import type { User } from '../types';
 import { formatNumber } from '../utils/dates';
+
+type PendingConfirm = {
+  title: string;
+  body: ReactNode;
+  confirmLabel: string;
+  tone: ConfirmTone;
+  typeToConfirm?: string;
+  run: () => Promise<void> | void;
+};
 
 export default function Settings() {
   const { t, language } = useLanguageStore();
   const { user: currentUser, updateUser: updateCurrentUser } = useAuthStore();
-  const { members, settings, setSettings, addMember, updateMember, removeMember, tasks, setTasks, setTrashedTasks, setMembers } = useAppStore();
+  const {
+    members,
+    settings,
+    setSettings,
+    addMember,
+    updateMember,
+    removeMember,
+    tasks,
+    setTasks,
+    setTrashedTasks,
+    setMembers,
+  } = useAppStore();
   const { addToast } = useToastStore();
 
-  // Conversion rate
   const [rate, setRate] = useState(settings.usd_to_irr_rate);
-  const [savingRate, setSavingRate] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
-  // User form modal
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formName, setFormName] = useState('');
@@ -23,33 +59,107 @@ export default function Settings() {
   const [formPassword, setFormPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [formRole, setFormRole] = useState<'admin' | 'member'>('member');
-  const [savingUser, setSavingUser] = useState(false);
-
-  // Delete confirm modal
-  const [deletingUser, setDeletingUser] = useState<User | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setRate(settings.usd_to_irr_rate);
   }, [settings.usd_to_irr_rate]);
 
-  const handleSaveRate = async () => {
-    if (!Number.isFinite(rate) || rate <= 0) {
-      addToast('Enter a valid conversion rate greater than zero', 'error');
-      return;
-    }
-    setSavingRate(true);
+  const rateDirty = rate !== settings.usd_to_irr_rate;
+
+  const run = async (action: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(true);
     try {
-      const updated = await updateSettings(settings.id, { usd_to_irr_rate: rate });
-      setSettings(updated);
-      addToast('Conversion rate updated', 'success');
-    } catch {
-      addToast('Failed to update rate', 'error');
+      await action();
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : t('common.unexpected_error'), 'error');
     } finally {
-      setSavingRate(false);
+      setBusy(false);
     }
   };
 
+  // ── Conversion rate ────────────────────────────────────────────────────────
+  // Confirmed because it restates every IRR figure on every member's screen.
+  // It used to save on one click with no warning at all.
+  const requestSaveRate = () => {
+    if (!Number.isFinite(rate) || rate <= 0) {
+      addToast(t('settings.invalid_rate'), 'error');
+      return;
+    }
+    setConfirm({
+      title: t('settings.confirm_rate_title'),
+      tone: 'warning',
+      confirmLabel: t('payments.set_rate'),
+      body: (
+        <p className="confirm-copy">
+          {t('settings.confirm_rate_body')
+            .replace('{old}', formatNumber(settings.usd_to_irr_rate, language))
+            .replace('{new}', formatNumber(rate, language))}
+        </p>
+      ),
+      run: () =>
+        run(async () => {
+          const updated = await updateSettings(settings.id, { usd_to_irr_rate: rate });
+          setSettings(updated);
+          addToast(t('settings.rate_saved'), 'success');
+        }),
+    });
+  };
+
+  // ── Backup ─────────────────────────────────────────────────────────────────
+  const handleExport = () =>
+    run(async () => {
+      const json = await exportBackup();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `agnus-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      addToast(t('settings.export_success'), 'success');
+    });
+
+  // Import overwrites every task, member and setting in the project. It used to
+  // fire straight off the file picker, so it now asks for the phrase in full.
+  const handleImportFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (loaded) => {
+      const content = loaded.target?.result as string;
+      input.value = '';
+      setConfirm({
+        title: t('settings.confirm_import_title'),
+        tone: 'danger',
+        confirmLabel: t('settings.import_action'),
+        typeToConfirm: t('settings.import_phrase'),
+        body: (
+          <>
+            <p className="confirm-copy">{t('settings.confirm_import_body')}</p>
+            <p className="confirm-note">
+              <AlertTriangle size={13} aria-hidden="true" />
+              {t('settings.confirm_import_warning')}
+            </p>
+          </>
+        ),
+        run: () =>
+          run(async () => {
+            const result = await importBackup(content);
+            setTasks(result.tasks);
+            setTrashedTasks(result.trashedTasks);
+            setMembers(result.users);
+            setSettings(result.settings);
+            addToast(t('settings.import_success'), 'success');
+          }),
+      });
+    };
+    reader.readAsText(file);
+  };
+
+  // ── Members ────────────────────────────────────────────────────────────────
   const resetUserForm = () => {
     setFormName('');
     setFormUsername('');
@@ -60,120 +170,144 @@ export default function Settings() {
     setShowUserForm(false);
   };
 
-  const handleEditUser = (user: User) => {
-    setEditingUser(user);
-    setFormName(user.name);
-    setFormUsername(user.username);
+  const openEditUser = (member: User) => {
+    setEditingUser(member);
+    setFormName(member.name);
+    setFormUsername(member.username);
     setFormPassword('');
     setShowPassword(false);
-    setFormRole(user.role as 'admin' | 'member');
+    setFormRole(member.role);
     setShowUserForm(true);
   };
 
-  const handleSaveUser = async () => {
-    if (savingUser) return;
-    if (!formName.trim() || !formUsername.trim()) return;
-    if (!/^[a-z0-9._-]{3,32}$/i.test(formUsername.trim())) {
-      addToast('Username must be 3–32 letters, numbers, dots, dashes, or underscores', 'error');
-      return;
-    }
-    if (formPassword && formPassword.trim().length < 8) {
-      addToast('Password must be at least 8 characters', 'error');
-      return;
-    }
-    setSavingUser(true);
-    try {
+  const saveUser = () =>
+    run(async () => {
       if (editingUser) {
-        // Update existing user
-        const data: Record<string, string> = { name: formName, username: formUsername.trim(), role: formRole };
-        if (formPassword) {
-          data.password = formPassword;
-          data.passwordConfirm = formPassword;
-        }
-        const updated = await apiUpdateUser(editingUser.id, data);
-        updateMember(editingUser.id, updated);
-        if (editingUser.id === currentUser?.id) updateCurrentUser(updated);
-        addToast(`Member "${formName}" updated successfully`, 'success');
+        const updated = await updateUser(editingUser.id, {
+          name: formName.trim(),
+          username: formUsername.trim(),
+          role: formRole,
+          ...(formPassword ? { password: formPassword } : {}),
+        });
+        updateMember(updated.id, updated);
+        if (updated.id === currentUser?.id) updateCurrentUser(updated);
+        addToast(t('settings.member_updated').replace('{name}', updated.name), 'success');
       } else {
-        // Create new user
-        if (!formPassword) {
-          addToast('Password is required for new users', 'error');
-          setSavingUser(false);
-          return;
-        }
         const created = await createUser({
-          name: formName,
-          username: formUsername,
+          name: formName.trim(),
+          username: formUsername.trim(),
           password: formPassword,
-          passwordConfirm: formPassword,
           role: formRole,
         });
         addMember(created);
-        addToast(`Member "${formName}" created successfully`, 'success');
+        addToast(t('settings.member_created').replace('{name}', created.name), 'success');
       }
       resetUserForm();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to save user';
-      addToast(message, 'error');
-    } finally {
-      setSavingUser(false);
-    }
-  };
+    });
 
-  const handleDeleteUserConfirm = async () => {
-    if (!deletingUser || deleting) return;
-    if (deletingUser.id === currentUser?.id) {
-      addToast('You cannot remove your own active account', 'error');
-      setDeletingUser(null);
+  const requestSaveUser = () => {
+    if (!formName.trim() || !formUsername.trim()) {
+      addToast(t('settings.name_and_username_required'), 'error');
       return;
     }
-    setDeleting(true);
-    try {
-      await apiDeleteUser(deletingUser.id);
-      removeMember(deletingUser.id);
-      addToast(`Member "${deletingUser.name}" was removed`, 'success');
-      setDeletingUser(null);
-    } catch {
-      addToast('Failed to remove member', 'error');
-    } finally {
-      setDeleting(false);
+    if (!/^[a-z0-9._-]{3,32}$/i.test(formUsername.trim())) {
+      addToast(t('settings.invalid_username'), 'error');
+      return;
     }
+    if (!editingUser && !formPassword) {
+      addToast(t('settings.password_required'), 'error');
+      return;
+    }
+    if (formPassword && formPassword.trim().length < 8) {
+      addToast(t('settings.password_too_short'), 'error');
+      return;
+    }
+
+    // Granting admin hands over approvals, payments and the roster itself.
+    // Every other edit to a member saves without interrupting.
+    const promoting = formRole === 'admin' && editingUser?.role !== 'admin';
+    if (!promoting) {
+      void saveUser();
+      return;
+    }
+
+    setConfirm({
+      title: t('settings.confirm_promote_title'),
+      tone: 'warning',
+      confirmLabel: t('settings.confirm_promote_action'),
+      body: (
+        <>
+          <p className="confirm-copy">
+            {t('settings.confirm_promote_body').replace('{name}', formName.trim())}
+          </p>
+          <ul className="confirm-list">
+            <li>{t('settings.promote_grant_tasks')}</li>
+            <li>{t('settings.promote_grant_payments')}</li>
+            <li>{t('settings.promote_grant_members')}</li>
+          </ul>
+        </>
+      ),
+      run: saveUser,
+    });
   };
 
-  const handleExportBackup = () => {
-    const json = exportLocalBackup();
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `agnus-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    addToast('Database exported successfully', 'success');
+  const requestToggleActive = (member: User) => {
+    const deactivating = member.is_active;
+    setConfirm({
+      title: deactivating
+        ? t('settings.confirm_deactivate_title')
+        : t('settings.confirm_activate_title'),
+      tone: deactivating ? 'warning' : 'default',
+      confirmLabel: deactivating ? t('settings.deactivate') : t('settings.activate'),
+      body: (
+        <p className="confirm-copy">
+          {(deactivating
+            ? t('settings.confirm_deactivate_body')
+            : t('settings.confirm_activate_body')
+          ).replace('{name}', member.name)}
+        </p>
+      ),
+      run: () =>
+        run(async () => {
+          const updated = await setUserActive(member.id, !member.is_active);
+          updateMember(updated.id, updated);
+          addToast(
+            deactivating ? t('settings.member_deactivated') : t('settings.member_activated'),
+            'success'
+          );
+        }),
+    });
   };
 
-  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const input = e.currentTarget;
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const content = event.target?.result as string;
-        const result = await importLocalBackup(content);
-        setTasks(result.tasks);
-        setTrashedTasks(result.trashedTasks);
-        setMembers(result.users);
-        setSettings(result.settings);
-        addToast('Database imported and synced successfully!', 'success');
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Invalid backup JSON file';
-        addToast(message, 'error');
-      } finally {
-        input.value = '';
-      }
-    };
-    reader.readAsText(file);
+  const requestDeleteUser = (member: User) => {
+    const taskCount = tasks.filter((task) => task.assigned_to === member.id).length;
+    setConfirm({
+      title: t('settings.confirm_remove_title'),
+      tone: 'danger',
+      confirmLabel: t('settings.remove_member'),
+      typeToConfirm: member.username,
+      body: (
+        <>
+          <p className="confirm-copy">
+            {t('settings.confirm_remove_body').replace('{name}', member.name)}
+          </p>
+          <p className="confirm-note">
+            <AlertTriangle size={13} aria-hidden="true" />
+            {t('settings.confirm_remove_warning').replace(
+              '{count}',
+              formatNumber(taskCount, language)
+            )}
+          </p>
+          <p className="confirm-note">{t('settings.prefer_deactivate')}</p>
+        </>
+      ),
+      run: () =>
+        run(async () => {
+          await deleteUser(member.id);
+          removeMember(member.id);
+          addToast(t('settings.member_removed').replace('{name}', member.name), 'success');
+        }),
+    });
   };
 
   return (
@@ -185,208 +319,247 @@ export default function Settings() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 'var(--space-6)', marginBottom: 'var(--space-6)' }}>
-        {/* Conversion Rate */}
-        <div className="card">
+      <div className="settings-grid">
+        <section className="card">
           <div className="card-header">
-            <h3 className="card-title">{t('settings.conversion_rate')}</h3>
+            <h2 className="card-title">{t('settings.conversion_rate')}</h2>
           </div>
-          <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'end' }}>
-            <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-              <label className="form-label">{t('payments.conversion_rate')}</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>1 USD =</span>
+          <p className="card-help">{t('settings.conversion_rate_help')}</p>
+          <div className="settings-rate-row">
+            <div className="form-group">
+              <label className="form-label" htmlFor="settings-rate">
+                {t('payments.conversion_rate')}
+              </label>
+              <div className="settings-rate-input">
+                <span aria-hidden="true">1 USD =</span>
                 <input
+                  id="settings-rate"
                   type="number"
                   className="form-input input-mono"
                   value={rate}
-                  onChange={(e) => setRate(Number(e.target.value))}
+                  onChange={(event) => setRate(Number(event.target.value))}
                   min={0}
                 />
-                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>IRR</span>
+                <span aria-hidden="true">IRR</span>
               </div>
             </div>
-            <button className="btn btn-primary" onClick={handleSaveRate} disabled={savingRate}>
-              {savingRate ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
+            <button
+              className="btn btn-primary"
+              onClick={requestSaveRate}
+              disabled={busy || !rateDirty}
+            >
+              {busy ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
               {t('payments.set_rate')}
             </button>
           </div>
-        </div>
+        </section>
 
-        {/* Multi-Device Data Sync & Backup */}
-        <div className="card">
+        <section className="card">
           <div className="card-header">
-            <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <RefreshCw size={18} />
-              Cross-Device Data Sync & Backup
-            </h3>
+            <h2 className="card-title">{t('settings.backup_title')}</h2>
           </div>
-          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)' }}>
-            Export a password-free JSON snapshot of tasks, members, and settings for recovery or migration.
-          </p>
-          <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-            <button className="btn btn-secondary btn-sm" onClick={handleExportBackup}>
+          <p className="card-help">{t('settings.backup_help')}</p>
+          <div className="settings-backup-actions">
+            <button className="btn btn-secondary btn-sm" onClick={handleExport} disabled={busy}>
               <Download size={14} />
-              Export Backup JSON
+              {t('settings.export_action')}
             </button>
-            <label className="btn btn-primary btn-sm" style={{ cursor: 'pointer' }}>
+            <button
+              className="btn btn-secondary btn-sm btn-danger-outline"
+              onClick={() => importInputRef.current?.click()}
+              disabled={busy}
+            >
               <UploadCloud size={14} />
-              Import & Sync JSON
-              <input
-                type="file"
-                accept=".json"
-                onChange={handleImportBackup}
-                style={{ display: 'none' }}
-              />
-            </label>
+              {t('settings.import_action')}
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleImportFile}
+              hidden
+            />
           </div>
-        </div>
+          <p className="settings-danger-note">
+            <AlertTriangle size={13} aria-hidden="true" />
+            {t('settings.import_danger_note')}
+          </p>
+        </section>
       </div>
 
-      {/* User Management */}
-      <div className="card">
+      <section className="card section-gap">
         <div className="card-header">
-          <h3 className="card-title">{t('settings.manage_users')}</h3>
-          <button className="btn btn-primary btn-sm" onClick={() => { resetUserForm(); setShowUserForm(true); }}>
+          <h2 className="card-title">{t('settings.manage_users')}</h2>
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              resetUserForm();
+              setShowUserForm(true);
+            }}
+          >
             <UserPlus size={16} />
             {t('members.create_user')}
           </button>
         </div>
 
-        {/* User Form Modal / Drawer */}
         {showUserForm && (
-          <div style={{
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-lg)',
-            padding: 'var(--space-5)',
-            marginBottom: 'var(--space-5)',
-          }}>
-            <h4 style={{ marginBottom: 'var(--space-4)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-bold)' }}>
-              {editingUser ? t('members.edit_user') : t('members.create_user')}
-            </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-3)' }}>
+          <div className="settings-user-form">
+            <h3>{editingUser ? t('members.edit_user') : t('members.create_user')}</h3>
+            <div className="settings-user-fields">
               <div className="form-group">
-                <label className="form-label">{t('members.name')}</label>
+                <label className="form-label" htmlFor="member-name">
+                  {t('members.name')}
+                </label>
                 <input
+                  id="member-name"
                   className="form-input"
                   value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="e.g. Sina"
+                  onChange={(event) => setFormName(event.target.value)}
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">{t('members.username')}</label>
+                <label className="form-label" htmlFor="member-username">
+                  {t('members.username')}
+                </label>
                 <input
+                  id="member-username"
                   className="form-input input-mono"
                   value={formUsername}
-                  onChange={(e) => setFormUsername(e.target.value)}
-                  placeholder="e.g. sina"
+                  onChange={(event) => setFormUsername(event.target.value)}
+                  autoComplete="off"
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">{t('members.password')}</label>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <label className="form-label" htmlFor="member-password">
+                  {t('members.password')}
+                </label>
+                <div className="input-with-affix">
                   <input
+                    id="member-password"
                     type={showPassword ? 'text' : 'password'}
                     className="form-input"
                     value={formPassword}
-                    onChange={(e) => setFormPassword(e.target.value)}
-                    placeholder={editingUser ? 'Leave empty to keep current' : 'Set password'}
+                    onChange={(event) => setFormPassword(event.target.value)}
+                    placeholder={
+                      editingUser ? t('settings.password_keep') : t('settings.password_set')
+                    }
                     minLength={8}
-                    style={{ paddingInlineEnd: '40px' }}
+                    autoComplete="new-password"
                   />
                   <button
                     type="button"
-                    className="btn btn-ghost btn-icon btn-sm"
+                    className="btn btn-ghost btn-icon btn-sm input-affix"
                     onClick={() => setShowPassword(!showPassword)}
-                    style={{
-                      position: 'absolute',
-                      insetInlineEnd: '8px',
-                      color: 'var(--color-text-secondary)',
-                    }}
-                    title={showPassword ? 'Hide password' : 'Show password'}
+                    aria-label={
+                      showPassword ? t('settings.hide_password') : t('settings.show_password')
+                    }
                   >
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">{t('members.role')}</label>
+                <label className="form-label" htmlFor="member-role">
+                  {t('members.role')}
+                </label>
                 <select
+                  id="member-role"
                   className="form-select"
                   value={formRole}
-                  onChange={(e) => setFormRole(e.target.value as 'admin' | 'member')}
+                  onChange={(event) => setFormRole(event.target.value as 'admin' | 'member')}
                   disabled={editingUser?.id === currentUser?.id}
-                  title={editingUser?.id === currentUser?.id ? 'You cannot change your own role' : undefined}
+                  title={
+                    editingUser?.id === currentUser?.id
+                      ? t('settings.cannot_change_own_role')
+                      : undefined
+                  }
                 >
                   <option value="member">{t('members.member_role')}</option>
                   <option value="admin">{t('members.admin_role')}</option>
                 </select>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end', marginTop: 'var(--space-3)' }}>
-              <button className="btn btn-secondary btn-sm" onClick={resetUserForm}>
+            <div className="settings-user-form-actions">
+              <button className="btn btn-secondary btn-sm" onClick={resetUserForm} disabled={busy}>
                 {t('common.cancel')}
               </button>
-              <button className="btn btn-primary btn-sm" onClick={handleSaveUser} disabled={savingUser}>
-                {savingUser ? <Loader2 size={14} className="spin" /> : <Save size={14} />}
+              <button className="btn btn-primary btn-sm" onClick={requestSaveUser} disabled={busy}>
+                {busy ? <Loader2 size={14} className="spin" /> : <Save size={14} />}
                 {t('common.save')}
               </button>
             </div>
           </div>
         )}
 
-        {/* Members Table */}
-        <div className="data-table-wrapper" style={{ border: 'none' }}>
+        <div className="data-table-wrapper is-flush">
           <table className="data-table">
             <thead>
               <tr>
-                <th>{t('members.name')}</th>
-                <th>{t('members.username')}</th>
-                <th>{t('members.role')}</th>
-                <th>{t('members.total_tasks')}</th>
-                <th>{t('tasks.actions')}</th>
+                <th scope="col">{t('members.name')}</th>
+                <th scope="col">{t('members.username')}</th>
+                <th scope="col">{t('members.role')}</th>
+                <th scope="col">{t('members.total_tasks')}</th>
+                <th scope="col">{t('settings.account_status')}</th>
+                <th scope="col">{t('tasks.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {members.map((member) => {
-                const taskCount = tasks.filter((t) => t.assigned_to === member.id).length;
+                const taskCount = tasks.filter((task) => task.assigned_to === member.id).length;
+                const isSelf = member.id === currentUser?.id;
                 return (
-                  <tr key={member.id}>
-                    <td>
+                  <tr key={member.id} className={member.is_active ? '' : 'row-muted'}>
+                    <td data-label={t('members.name')}>
                       <div className="member-cell">
-                        <div className="member-avatar">{member.name.charAt(0).toUpperCase()}</div>
+                        <div className="member-avatar" aria-hidden="true">
+                          {member.name.charAt(0).toUpperCase()}
+                        </div>
                         {member.name}
                       </div>
                     </td>
-                    <td style={{ fontSize: 'var(--text-xs)' }}>
+                    <td data-label={t('members.username')}>
                       <span className="latin-text">@{member.username}</span>
                     </td>
-                    <td>
-                      <span
-                        className="status-badge"
-                        style={{
-                          color: member.role === 'admin' ? 'var(--color-purple)' : 'var(--color-primary)',
-                          background: member.role === 'admin' ? 'var(--color-purple-bg)' : 'var(--color-primary-50)',
-                        }}
-                      >
-                        {member.role === 'admin' ? t('members.admin_role') : t('members.member_role')}
+                    <td data-label={t('members.role')}>
+                      <span className={`status-badge role-${member.role}`}>
+                        {member.role === 'admin' && <ShieldCheck size={12} aria-hidden="true" />}
+                        {member.role === 'admin'
+                          ? t('members.admin_role')
+                          : t('members.member_role')}
                       </span>
                     </td>
-                    <td>{formatNumber(taskCount, language)} {t('members.task_count')}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
-                        <button className="btn btn-ghost btn-sm" onClick={() => handleEditUser(member)}>
+                    <td data-label={t('members.total_tasks')}>
+                      {formatNumber(taskCount, language)}
+                    </td>
+                    <td data-label={t('settings.account_status')}>
+                      <span
+                        className={`status-badge ${member.is_active ? 'is-active' : 'is-inactive'}`}
+                      >
+                        {member.is_active ? t('settings.active') : t('settings.inactive')}
+                      </span>
+                    </td>
+                    <td data-label={t('tasks.actions')}>
+                      <div className="row-actions">
+                        <button className="btn btn-ghost btn-sm" onClick={() => openEditUser(member)}>
                           <Edit2 size={14} />
                           {t('common.edit')}
                         </button>
+                        {/* Deactivating is the reversible option and comes
+                            first; removal is kept but asks for the username. */}
                         <button
                           className="btn btn-ghost btn-sm"
-                          style={{ color: 'var(--color-danger)' }}
-                          onClick={() => setDeletingUser(member)}
-                          disabled={member.id === currentUser?.id}
-                          title={member.id === currentUser?.id ? 'You cannot remove your own account' : undefined}
+                          onClick={() => requestToggleActive(member)}
+                          disabled={isSelf}
+                          title={isSelf ? t('settings.cannot_deactivate_self') : undefined}
+                        >
+                          {member.is_active ? <UserMinus size={14} /> : <UserCheck size={14} />}
+                          {member.is_active ? t('settings.deactivate') : t('settings.activate')}
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm btn-ghost-danger"
+                          onClick={() => requestDeleteUser(member)}
+                          disabled={isSelf}
+                          title={isSelf ? t('settings.cannot_remove_self') : undefined}
                         >
                           <Trash2 size={14} />
                           {t('common.delete')}
@@ -399,45 +572,24 @@ export default function Settings() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
-      {/* Delete User Confirmation Modal */}
-      {deletingUser && (
-        <>
-          <div className="modal-backdrop" onClick={() => setDeletingUser(null)} />
-          <div className="modal" role="dialog" aria-modal="true">
-            <div className="modal-header">
-              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-danger)' }}>
-                <AlertCircle size={20} />
-                Remove Team Member?
-              </h3>
-              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setDeletingUser(null)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
-                Are you sure you want to remove <strong>{deletingUser.name}</strong> (@{deletingUser.username}) from the team?
-              </p>
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-2)' }}>
-                This action cannot be undone. Any tasks assigned to this member will remain in the database and can be reassigned.
-              </p>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setDeletingUser(null)}>
-                {t('common.cancel')}
-              </button>
-              <button className="btn btn-danger" onClick={handleDeleteUserConfirm} disabled={deleting}>
-                {deleting ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
-                Remove Member
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      <style>{`
-        .spin { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
+      <ConfirmDialog
+        open={Boolean(confirm)}
+        title={confirm?.title || ''}
+        tone={confirm?.tone}
+        typeToConfirm={confirm?.typeToConfirm}
+        confirmLabel={confirm?.confirmLabel || t('common.confirm')}
+        busy={busy}
+        onCancel={() => setConfirm(null)}
+        onConfirm={async () => {
+          const pending = confirm;
+          setConfirm(null);
+          await pending?.run();
+        }}
+      >
+        {confirm?.body}
+      </ConfirmDialog>
     </div>
   );
 }

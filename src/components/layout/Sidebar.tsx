@@ -13,7 +13,6 @@ import {
   Menu,
   X,
   ChevronRight,
-  AlertCircle,
   MessageSquareText,
   Trash2,
 } from 'lucide-react';
@@ -21,6 +20,7 @@ import { useAuthStore, useLanguageStore, useAppStore } from '../../store';
 import { logout } from '../../api/auth';
 import { useEffect, useState } from 'react';
 import { formatNumber } from '../../utils/dates';
+import ConfirmDialog from '../shared/ConfirmDialog';
 import { MEMBER_ACTIVE_STATUSES } from '../../types';
 
 export default function Sidebar() {
@@ -34,10 +34,29 @@ export default function Sidebar() {
   const [membersOpen, setMembersOpen] = useState(true);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  const confirmLogout = () => {
-    logout();
+  const confirmLogout = async () => {
+    await logout();
     setShowLogoutModal(false);
     navigate('/login');
+  };
+
+  // Signing out is cheap to undo — you sign back in. It only asks first when
+  // there is unsaved work on this device that signing out would strand.
+  const handleLogoutClick = () => {
+    const hasDrafts = (() => {
+      try {
+        for (let index = 0; index < window.sessionStorage.length; index += 1) {
+          if (window.sessionStorage.key(index)?.startsWith('agnus:draft:')) return true;
+        }
+      } catch {
+        // Storage unavailable: fall back to asking.
+        return true;
+      }
+      return false;
+    })();
+
+    if (hasDrafts) setShowLogoutModal(true);
+    else void confirmLogout();
   };
 
   const getMemberTaskCount = (memberId: string) =>
@@ -279,7 +298,7 @@ export default function Sidebar() {
           <button
             type="button"
             className="sidebar-user"
-            onClick={() => setShowLogoutModal(true)}
+            onClick={handleLogoutClick}
             title={t('nav.logout')}
           >
             <div className="sidebar-user-avatar">
@@ -296,35 +315,17 @@ export default function Sidebar() {
         </div>
       </aside>
 
-      {/* Logout Confirmation Modal */}
-      {showLogoutModal && (
-        <>
-          <div className="modal-backdrop" onClick={() => setShowLogoutModal(false)} />
-          <div className="modal" role="dialog" aria-modal="true">
-            <div className="modal-header">
-              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <AlertCircle size={20} style={{ color: 'var(--color-primary)' }} />
-                {t('common.logout_title')}
-              </h3>
-              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowLogoutModal(false)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
-                {t('common.logout_question')}
-              </p>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowLogoutModal(false)}>
-                {t('common.cancel')}
-              </button>
-              <button className="btn btn-primary" onClick={confirmLogout} style={{ background: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}>
-                <LogOut size={16} />
-                {t('nav.logout')}
-              </button>
-            </div>
-          </div>
-        </>
-      )}
+      {/* Only reached when there are unsaved drafts on this device. */}
+      <ConfirmDialog
+        open={showLogoutModal}
+        title={t('common.logout_title')}
+        tone="warning"
+        confirmLabel={t('nav.logout')}
+        onCancel={() => setShowLogoutModal(false)}
+        onConfirm={() => void confirmLogout()}
+      >
+        <p className="confirm-copy">{t('common.logout_unsaved')}</p>
+      </ConfirmDialog>
     </>
   );
 }

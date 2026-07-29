@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from './store';
-import { restoreSession } from './api/auth';
+import { initAuth, logout as signOut } from './api/auth';
 import {
   fetchTasks,
   fetchDeletedTasks,
@@ -48,7 +48,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
 function AppContent() {
   const { isAuthenticated } = useAuthStore();
-  const { language } = useLanguageStore();
+  const { language, t } = useLanguageStore();
   const {
     setTasks,
     setTrashedTasks,
@@ -65,11 +65,9 @@ function AppContent() {
   const { addToast } = useToastStore();
   const [loading, setLoading] = useState(true);
 
-  // Restore session on mount
-  useEffect(() => {
-    restoreSession();
-    setLoading(false);
-  }, []);
+  // Follow the Supabase session for the life of the tab: first load, refresh,
+  // and sign-out (including a sign-out performed in another tab).
+  useEffect(() => initAuth(() => setLoading(false)), []);
 
   useEffect(() => {
     document.documentElement.dir = language === 'fa' ? 'rtl' : 'ltr';
@@ -93,8 +91,8 @@ function AppContent() {
         if (!active) return;
         const freshUser = users.find((candidate) => candidate.id === sessionUser?.id);
         if (!freshUser || !freshUser.is_active) {
-          useAuthStore.getState().logout();
-          addToast('Your account is no longer active', 'error');
+          void signOut();
+          addToast(t('common.account_inactive'), 'error');
           return;
         }
         useAuthStore.getState().updateUser(freshUser);
@@ -104,7 +102,7 @@ function AppContent() {
         setSettings(settings);
       } catch (err) {
         console.error('Failed to load data:', err);
-        if (active) addToast('Could not sync data with Supabase', 'error');
+        if (active) addToast(t('common.sync_error'), 'error');
       }
     };
 
@@ -119,6 +117,7 @@ function AppContent() {
     setSettings,
     setTasks,
     setTrashedTasks,
+    t,
   ]);
 
   // Keep signed-in browsers synchronized with inserts, updates, and deletes.
@@ -197,13 +196,13 @@ function AppContent() {
       }
     );
 
+    // Realtime delivers changes; focus, visibility and reconnect cover anything
+    // a dropped socket missed. A 4-second poll used to run on top of all of
+    // this, re-reading every task body ~15 times a minute in every open tab.
     const handleFocus = () => void refreshTasks();
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') void refreshTasks();
     };
-    const syncTimer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refreshTasks();
-    }, 4000);
 
     window.addEventListener('focus', handleFocus);
     window.addEventListener('online', handleFocus);
@@ -211,7 +210,6 @@ function AppContent() {
 
     return () => {
       active = false;
-      window.clearInterval(syncTimer);
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('online', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
@@ -246,8 +244,8 @@ function AppContent() {
 
       const freshUser = users.find((candidate) => candidate.id === sessionUser.id);
       if (!freshUser || !freshUser.is_active) {
-        authStore.logout();
-        addToast('Your account was removed or deactivated', 'error');
+        void signOut();
+        addToast(t('common.account_removed'), 'error');
         return false;
       }
 
@@ -335,8 +333,8 @@ function AppContent() {
         const sessionUser = useAuthStore.getState().user;
         if (affectedUserId && affectedUserId === sessionUser?.id) {
           if (eventType === 'DELETE' || !newUser?.is_active) {
-            useAuthStore.getState().logout();
-            addToast('Your account was removed or deactivated', 'error');
+            void signOut();
+            addToast(t('common.account_removed'), 'error');
             return;
           }
           if (newUser) useAuthStore.getState().updateUser(newUser);
@@ -372,9 +370,6 @@ function AppContent() {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refreshSharedData();
     };
-    const syncTimer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') refreshSharedData();
-    }, 4000);
 
     window.addEventListener('focus', refreshSharedData);
     window.addEventListener('online', refreshSharedData);
@@ -382,7 +377,6 @@ function AppContent() {
 
     return () => {
       active = false;
-      window.clearInterval(syncTimer);
       window.removeEventListener('focus', refreshSharedData);
       window.removeEventListener('online', refreshSharedData);
       document.removeEventListener('visibilitychange', handleVisibility);
@@ -396,6 +390,7 @@ function AppContent() {
     removeMember,
     setMembers,
     setSettings,
+    t,
     updateMember,
   ]);
 

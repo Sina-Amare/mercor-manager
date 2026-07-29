@@ -15,7 +15,7 @@ export default function MemberView() {
   if (!member) {
     return (
       <div className="page">
-        <h1 className="page-title">Member not found</h1>
+        <h1 className="page-title">{t('members.not_found')}</h1>
       </div>
     );
   }

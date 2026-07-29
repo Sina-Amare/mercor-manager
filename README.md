@@ -1,34 +1,62 @@
 # AGNUS Task Management
 
-AGNUS is a bilingual (English/Persian) task workflow for assigning Mercor work,
+AGNUS is a bilingual (English/Persian) workflow for assigning Mercor work,
 tracking member and studio verdicts, recording payments, and sharing reusable
 team and personal prompts. It is a static React application backed by Supabase
 and deployed to GitHub Pages.
 
-## Workflow
+## The workflow
 
-1. An admin creates a task and assigns it to an active member.
-2. The member claims it, submits a verdict, or discards it.
-3. An admin moves submitted work through studio and review.
-4. Approved tasks become payable and can be marked paid.
-5. Supabase Realtime sends inserts, updates, reassignments, and deletions to
-   every open dashboard. A reconnect or window focus also performs a full
-   reconciliation so missed events cannot leave the UI stale.
+A task moves through six visible stages, and every step has a way back.
+
+```text
+Assigned → Working → Verdict → Studio → Review → Final
+                       │                   ├─ Approved → paid
+                       │                   ├─ Sent back → Working
+   SWF ⇄ SWOF ⇄ Discarded                  └─ Rejected
+   (corrected in place)
+```
+
+1. An admin uploads a task and assigns it to an active member.
+2. The member claims it, drafts the shared submission fields while working, and
+   records a verdict: **SWF** (submitted with flaw — the outcome the work aims
+   for), **SWOF** (no flaw found), or discarded.
+3. An admin pulls it into Studio, tests it, writes the required note, and sends
+   it to Review.
+4. Review approves, sends back, or rejects. Approving opens the task for
+   payment in USD, displayed alongside rials.
+
+**Verdicts are facts, not positions.** SWF and SWOF can be corrected in either
+direction, by an admin or by the assigned member, without winding the task
+backwards and losing the submission. `src/workflow.ts` holds all 38 transitions;
+`public.task_transitions` holds the same table, and the database refuses
+anything that is not in it.
+
+**Reversibility over confirmation.** An action confirms only when it is
+irreversible, affects another person, or moves money. Everything else acts
+immediately and offers Undo on the toast — claiming a task, recording or
+correcting a verdict, stepping back, restoring from the recycle bin. What does
+ask: discarding, approving, sending back, rejecting, reassigning, marking paid,
+changing the exchange rate, granting admin, and importing a backup (which asks
+you to type the word).
+
+Every change is recorded in `task_events` with who, when, and from what — the
+history panel on each task shows it.
 
 ## Windows development
 
-Use Node.js 22 and run these commands from PowerShell:
+Node.js 22, from PowerShell:
 
 ```powershell
 npm ci
-Copy-Item .env.example .env
+Copy-Item .env.example .env   # then fill in your Supabase project values
 npm run dev
 ```
 
 Production checks:
 
 ```powershell
-npm run lint
+npm run lint      # oxlint + workflow/SQL parity check
 npm run build
 npm audit --omit=dev
 ```
@@ -36,43 +64,39 @@ npm audit --omit=dev
 The application uses `HashRouter`, so GitHub Pages refreshes and deep links work
 without server-side rewrites.
 
-## Configuration
-
-```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-publishable-key
-VITE_ENABLE_LOCAL_FALLBACK=false
-```
-
-Keep local fallback disabled in production. When disabled, failed cloud writes
-surface an error instead of creating browser-only data that other users can
-never receive.
-
-See [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md) for the Realtime, prompt
-workspace, and data integrity migrations.
-
 ## Architecture
 
-- `src/api`: Supabase access, authentication adapter, local recovery cache, and
-  Realtime subscription.
-- `src/store`: Zustand session, language, task, member, and UI state.
-- `src/pages`: role-specific dashboards and workflow screens.
-- `src/pages/Prompts.tsx`: shared team prompts and per-user personal prompts.
-- `src/components/tasks`: task tables and the workflow detail drawer.
-- `src/i18n`: English and Persian strings.
+- `src/workflow.ts` — the transition table, effects, stages and editing rights.
+  Everything the UI offers is derived from here.
+- `src/api` — Supabase access, auth, the `admin-users` and `ai` function
+  clients, and the Realtime subscriptions.
+- `src/store` — Zustand session, language, task, member and UI state.
+- `src/components/tasks/workspace` — the task screen: pinned task context beside
+  Submission / Studio / Review / Payment stage tabs, plus the history feed.
+- `src/components/shared/ConfirmDialog.tsx` — the one confirmation component,
+  with focus trapping and optional type-to-confirm.
+- `src/i18n` — English and Persian, kept at exact key parity.
+- `supabase/migrations` — schema, RLS, the workflow guardrail trigger, audit.
+- `supabase/functions` — `admin-users` (user provisioning) and `ai`.
 
-Routes and larger pages are lazy-loaded to keep the initial GitHub Pages bundle
-small. Cloud records remain the source of truth; local storage is only a
-recovery cache unless the explicit fallback flag is enabled.
+Routes and larger pages are lazy-loaded. Supabase is the only source of truth;
+a failed write raises an error rather than being reported as saved.
 
-## Security boundary
+## Security
 
-The current database still uses a custom `users` table with password comparison
-in the browser. Frontend hardening prevents passwords from entering persisted
-session state, task caches, or backup exports, but it cannot provide real
-authorization while the browser holds the publishable Supabase key.
+Login goes through Supabase Auth, roles are enforced by row level security, and
+the workflow rules are enforced by a database trigger rather than by React
+alone. Members can read and change only their own tasks and cannot touch
+assignment, review, payment or deletion columns at all.
 
-Before using AGNUS for sensitive or untrusted data, migrate login and user
-provisioning to Supabase Auth (or a trusted server/Edge Function), then enforce
-role-aware Row Level Security. The required backend work is detailed in
+If you are upgrading an existing deployment, the cutover has a required order
+and a mandatory credential rotation — see
+[docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md) and
 [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md).
+
+## AI assistance
+
+Optional and off by default. Three features: rewrite a submission field into
+English, an advisory pre-submit check before a task leaves Studio, and prompt
+search by meaning. The key lives in an Edge Function, never in the bundle; with
+no key configured every AI control is invisible. See [docs/AI.md](docs/AI.md).

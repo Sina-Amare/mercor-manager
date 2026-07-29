@@ -5,19 +5,18 @@ import { TASK_STATUSES, type TaskStatus } from '../types';
 import { formatNumber } from '../utils/dates';
 
 interface Props {
-  fixedStatus?: TaskStatus;
   fixedStatuses?: readonly TaskStatus[];
   titleKey?: string;
 }
 
-export default function StatusView({ fixedStatus, fixedStatuses, titleKey }: Props) {
+export default function StatusView({ fixedStatuses, titleKey }: Props) {
   const { status } = useParams<{ status: string }>();
   const { t, language } = useLanguageStore();
   const { user } = useAuthStore();
   const { tasks } = useAppStore();
   const isAdmin = user?.role === 'admin';
   const routeStatus = TASK_STATUSES.find((item) => item === status);
-  const activeStatus = fixedStatus || routeStatus;
+  const activeStatus = routeStatus;
   const activeStatuses = fixedStatuses || (activeStatus ? [activeStatus] : []);
 
   const filteredTasks = tasks.filter((task) => {

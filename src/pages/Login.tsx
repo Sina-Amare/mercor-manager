@@ -22,8 +22,14 @@ export default function Login() {
     try {
       await apiLogin(username, password);
       navigate('/');
-    } catch {
-      setError(t('login.error'));
+    } catch (err) {
+      // Credential failures stay generic; an inactive account is worth naming
+      // so the member contacts an admin instead of retrying their password.
+      setError(
+        err instanceof Error && err.message === 'This account is not active'
+          ? t('login.inactive')
+          : t('login.error')
+      );
     } finally {
       setLoading(false);
     }

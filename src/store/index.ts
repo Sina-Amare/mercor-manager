@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Language, User, Task, AppSettings, MemberStats, TaskStatus } from '../types';
+import type { Language, User, Task, AppSettings, MemberStats } from '../types';
 import en from '../i18n/en.json';
 import fa from '../i18n/fa.json';
 
@@ -57,11 +57,12 @@ export const useLanguageStore = create<LanguageState>()(
 
 // ─── Auth Store ──────────────────────────────────────────────────────────────
 
+// The session itself lives in Supabase Auth. Only the profile is cached here,
+// so a reload paints the shell before the roster round-trip finishes.
 interface AuthState {
   user: User | null;
-  token: string;
   isAuthenticated: boolean;
-  login: (user: User, token: string) => void;
+  login: (user: User) => void;
   logout: () => void;
   updateUser: (user: User) => void;
 }
@@ -70,17 +71,18 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
-      token: '',
       isAuthenticated: false,
-      login: (user, token) => set({ user: publicUser(user), token, isAuthenticated: true }),
-      logout: () => set({ user: null, token: '', isAuthenticated: false }),
+      login: (user) => set({ user: publicUser(user), isAuthenticated: true }),
+      logout: () => set({ user: null, isAuthenticated: false }),
       updateUser: (user) => set({ user: publicUser(user) }),
     }),
     {
       name: 'agnus-auth',
-      version: 1,
+      version: 2,
+      // v1 persisted a fake bearer token beside the profile. Drop it.
       migrate: (persisted) => {
-        const state = persisted as Partial<AuthState>;
+        const state = persisted as Partial<AuthState> & { token?: string };
+        delete state.token;
         return state.user ? { ...state, user: publicUser(state.user) } : state;
       },
     }
@@ -124,8 +126,6 @@ interface AppState {
   setSidebarOpen: (open: boolean) => void;
 
   // Computed
-  getTasksByStatus: (status: TaskStatus) => Task[];
-  getTasksByMember: (memberId: string) => Task[];
   getMemberStats: (memberId: string) => MemberStats;
   checkDuplicate: (taskId: string) => { isDuplicate: boolean; assignedTo?: User };
 }
@@ -303,8 +303,6 @@ export const useAppStore = create<AppState>()((set, get) => ({
   clearSelection: () => set({ selectedTaskIds: [] }),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
-  getTasksByStatus: (status) => get().tasks.filter((t) => t.status === status),
-  getTasksByMember: (memberId) => get().tasks.filter((t) => t.assigned_to === memberId),
   getMemberStats: (memberId) => {
     const tasks = get().tasks.filter((t) => t.assigned_to === memberId);
     const member = get().members.find((m) => m.id === memberId);
@@ -348,23 +346,29 @@ export interface Toast {
   id: string;
   message: string;
   type: 'success' | 'error' | 'warning';
+  /** When present the toast offers a one-click reversal instead of a modal. */
+  undo?: { label: string; run: () => void | Promise<void> };
 }
+
+const TOAST_MS = 4000;
+// An undoable toast has to outlive the moment of "wait, that was wrong".
+const UNDOABLE_TOAST_MS = 9000;
 
 interface ToastState {
   toasts: Toast[];
-  addToast: (message: string, type: Toast['type']) => void;
+  addToast: (message: string, type: Toast['type'], undo?: Toast['undo']) => void;
   removeToast: (id: string) => void;
 }
 
 export const useToastStore = create<ToastState>()((set) => ({
   toasts: [],
-  addToast: (message, type) => {
+  addToast: (message, type, undo) => {
     const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random()}`;
-    set((s) => ({ toasts: [...s.toasts, { id, message, type }] }));
-    setTimeout(() => {
-      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
-    }, 4000);
+    set((s) => ({ toasts: [...s.toasts, { id, message, type, undo }] }));
+    setTimeout(
+      () => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+      undo ? UNDOABLE_TOAST_MS : TOAST_MS
+    );
   },
-  removeToast: (id) =>
-    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+  removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));

@@ -1,9 +1,9 @@
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useAppStore, useAuthStore, useLanguageStore } from '../store';
-import TaskDetailPanel from '../components/tasks/TaskDetailPanel';
+import TaskWorkspacePanel from '../components/tasks/workspace/TaskWorkspace';
 
-export default function TaskWorkspace() {
+export default function TaskWorkspacePage() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
   const { tasks } = useAppStore();
@@ -19,10 +19,13 @@ export default function TaskWorkspace() {
     return (
       <div className="page">
         <div className="data-table-empty">
-          <div className="data-table-empty-icon">📋</div>
-          <div className="data-table-empty-text">{t('tasks.no_tasks')}</div>
+          <div className="data-table-empty-icon" aria-hidden="true">
+            📋
+          </div>
+          <div className="data-table-empty-text">{t('tasks.not_found')}</div>
+          <p className="data-table-empty-help">{t('tasks.not_found_help')}</p>
           <button className="btn btn-secondary" onClick={() => navigate(-1)}>
-            <ArrowLeft size={16} />
+            <ArrowLeft size={16} aria-hidden="true" />
             {t('common.back')}
           </button>
         </div>
@@ -32,7 +35,7 @@ export default function TaskWorkspace() {
 
   return (
     <div className="task-workspace-page">
-      <TaskDetailPanel task={task} onClose={() => navigate(-1)} variant="page" />
+      <TaskWorkspacePanel task={task} onClose={() => navigate(-1)} />
     </div>
   );
 }

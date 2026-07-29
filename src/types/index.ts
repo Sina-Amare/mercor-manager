@@ -32,8 +32,7 @@ export const MEMBER_ACTIVE_STATUSES: readonly TaskStatus[] = [
   'in_review',
 ];
 
-export const PAYMENT_STATUSES = ['not_applicable', 'pending', 'paid'] as const;
-export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+export type PaymentStatus = 'not_applicable' | 'pending' | 'paid';
 
 // ─── User ────────────────────────────────────────────────────────────────────
 
@@ -82,39 +81,6 @@ export interface Task {
   };
 }
 
-// ─── Activity Log ────────────────────────────────────────────────────────────
-
-export type ActivityAction =
-  | 'task_created'
-  | 'task_assigned'
-  | 'task_claimed'
-  | 'task_verdict_swf'
-  | 'task_verdict_swof'
-  | 'task_verdict_discarded'
-  | 'task_in_studio'
-  | 'task_on_hold'
-  | 'task_in_review'
-  | 'task_approved'
-  | 'task_sent_back'
-  | 'task_admin_discarded'
-  | 'task_reassigned'
-  | 'task_paid'
-  | 'user_created'
-  | 'user_updated';
-
-export interface ActivityLog {
-  id: string;
-  user: string;
-  task: string;
-  action: ActivityAction;
-  details: string;
-  created: string;
-  expand?: {
-    user?: User;
-    task?: Task;
-  };
-}
-
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export interface AppSettings {
@@ -141,106 +107,31 @@ export interface SavedPrompt {
 // ─── UI Types ────────────────────────────────────────────────────────────────
 
 export type Language = 'en' | 'fa';
-export type Theme = 'light' | 'dark';
 
-export interface StatusConfig {
-  key: TaskStatus;
-  label: string;
-  labelFa: string;
+/**
+ * Presentation only. Labels deliberately live in src/i18n/*.json and nowhere
+ * else: this record used to carry its own `label`/`labelFa`, so a badge said
+ * "ارسال با خطا" while a dialog on the same screen said "SWF".
+ */
+export interface StatusStyle {
   color: string;
   bgColor: string;
   icon: string;
 }
 
-export const STATUS_CONFIG: Record<TaskStatus, StatusConfig> = {
-  assigned: {
-    key: 'assigned',
-    label: 'Assigned',
-    labelFa: 'تخصیص داده شده',
-    color: '#334155',
-    bgColor: '#F1F5F9',
-    icon: '📋',
-  },
-  working: {
-    key: 'working',
-    label: 'Working',
-    labelFa: 'در حال کار',
-    color: '#075985',
-    bgColor: '#E0F2FE',
-    icon: '⚡',
-  },
-  swf: {
-    key: 'swf',
-    label: 'SWF',
-    labelFa: 'ارسال با خطا',
-    color: '#166534',
-    bgColor: '#DCFCE7',
-    icon: '😊',
-  },
-  swof: {
-    key: 'swof',
-    label: 'SWOF',
-    labelFa: 'ارسال بدون خطا',
-    color: '#854D0E',
-    bgColor: '#FEF9C3',
-    icon: '🙂',
-  },
-  member_discarded: {
-    key: 'member_discarded',
-    label: 'Discarded',
-    labelFa: 'رد شده',
-    color: '#991B1B',
-    bgColor: '#FDF2F2',
-    icon: '🗑️',
-  },
-  on_hold: {
-    key: 'on_hold',
-    label: 'On Hold',
-    labelFa: 'در انتظار',
-    color: '#3F3F46',
-    bgColor: '#F4F4F5',
-    icon: '⏸️',
-  },
-  in_studio: {
-    key: 'in_studio',
-    label: 'In Studio',
-    labelFa: 'در استودیو',
-    color: '#581C87',
-    bgColor: '#F3E8FF',
-    icon: '🎬',
-  },
-  in_review: {
-    key: 'in_review',
-    label: 'In Review',
-    labelFa: 'در حال بررسی',
-    color: '#075985',
-    bgColor: '#E0F2FE',
-    icon: '🔍',
-  },
-  approved: {
-    key: 'approved',
-    label: 'Approved',
-    labelFa: 'تأیید شده',
-    color: '#14532D',
-    bgColor: '#E6F4EA',
-    icon: '✅',
-  },
-  sent_back: {
-    key: 'sent_back',
-    label: 'Sent Back',
-    labelFa: 'بازگشت برای ویرایش',
-    color: '#9A3412',
-    bgColor: '#FFEDD5',
-    icon: '↩️',
-  },
-  admin_discarded: {
-    key: 'admin_discarded',
-    label: 'Rejected',
-    labelFa: 'رد شده توسط مدیر',
-    color: '#991B1B',
-    bgColor: '#FDF2F2',
-    icon: '❌',
-  },
+export const STATUS_CONFIG: Record<TaskStatus, StatusStyle> = {
+  assigned: { color: '#334155', bgColor: '#F1F5F9', icon: '📋' },
+  working: { color: '#075985', bgColor: '#E0F2FE', icon: '⚡' },
+  // SWF — a flaw was found, which is the goal of the work, so it reads positive.
+  swf: { color: '#166534', bgColor: '#DCFCE7', icon: '🎯' },
+  swof: { color: '#854D0E', bgColor: '#FEF9C3', icon: '○' },
+  member_discarded: { color: '#991B1B', bgColor: '#FDF2F2', icon: '🗑️' },
+  on_hold: { color: '#3F3F46', bgColor: '#F4F4F5', icon: '⏸️' },
+  in_studio: { color: '#581C87', bgColor: '#F3E8FF', icon: '🎬' },
+  in_review: { color: '#075985', bgColor: '#E0F2FE', icon: '🔍' },
+  approved: { color: '#14532D', bgColor: '#E6F4EA', icon: '✅' },
+  sent_back: { color: '#9A3412', bgColor: '#FFEDD5', icon: '↩️' },
+  admin_discarded: { color: '#991B1B', bgColor: '#FDF2F2', icon: '❌' },
 };
 
 // ─── Dashboard Stats ─────────────────────────────────────────────────────────
@@ -264,10 +155,3 @@ export interface MemberStats {
   totalPendingUsd: number;
 }
 
-// ─── Duplicate Check Result ──────────────────────────────────────────────────
-
-export interface DuplicateCheckResult {
-  isDuplicate: boolean;
-  existingTask?: Task;
-  assignedToName?: string;
-}

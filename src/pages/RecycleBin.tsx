@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { RotateCcw, Search, Trash2 } from 'lucide-react';
-import { restoreTask } from '../api/tasks';
+import { moveTaskToTrash, restoreTask } from '../api/tasks';
+import { useAuthStore } from '../store';
 import StatusBadge from '../components/shared/StatusBadge';
 import DateDisplay from '../components/shared/DateDisplay';
 import CopyButton from '../components/shared/CopyButton';
@@ -14,12 +15,14 @@ export default function RecycleBin() {
     trashedTasks,
     members,
     addTask,
+    addTrashedTask,
+    removeTask,
     removeTrashedTask,
   } = useAppStore();
+  const { user } = useAuthStore();
   const { addToast } = useToastStore();
   const [search, setSearch] = useState('');
-  const [restoringTask, setRestoringTask] = useState<Task | null>(null);
-  const [restoring, setRestoring] = useState(false);
+  const [restoring, setRestoring] = useState('');
 
   const filteredTasks = useMemo(() => {
     const query = search.trim().toLocaleLowerCase(language === 'fa' ? 'fa' : 'en-US');
@@ -34,22 +37,29 @@ export default function RecycleBin() {
     });
   }, [language, search, trashedTasks]);
 
-  const handleRestore = async () => {
-    if (!restoringTask || restoring) return;
-    setRestoring(true);
+  // Restoring is not destructive and it undoes in one click, so it acts
+  // immediately instead of stopping to ask. The confirmation modal that used to
+  // sit here was pure friction on the safest action in the app.
+  const handleRestore = async (task: Task) => {
+    if (restoring) return;
+    setRestoring(task.id);
     try {
-      const restored = await restoreTask(restoringTask.id);
-      removeTrashedTask(restoringTask.id);
+      const restored = await restoreTask(task.id);
+      removeTrashedTask(task.id);
       addTask(restored);
-      addToast(`${t('recycle_bin.restored')}: ${restoringTask.task_id}`, 'success');
-      setRestoringTask(null);
+      addToast(`${t('recycle_bin.restored')}: ${task.task_id}`, 'success', {
+        label: t('common.undo'),
+        run: async () => {
+          if (!user) return;
+          const recycled = await moveTaskToTrash(restored.id, user.id);
+          removeTask(recycled.id);
+          addTrashedTask(recycled);
+        },
+      });
     } catch (error) {
-      addToast(
-        error instanceof Error ? error.message : t('recycle_bin.restore_error'),
-        'error'
-      );
+      addToast(error instanceof Error ? error.message : t('recycle_bin.restore_error'), 'error');
     } finally {
-      setRestoring(false);
+      setRestoring('');
     }
   };
 
@@ -140,7 +150,8 @@ export default function RecycleBin() {
                     <td data-label={t('tasks.actions')}>
                       <button
                         className="btn btn-secondary btn-sm"
-                        onClick={() => setRestoringTask(task)}
+                        onClick={() => void handleRestore(task)}
+                        disabled={restoring === task.id}
                       >
                         <RotateCcw size={15} aria-hidden="true" />
                         {t('recycle_bin.restore')}
@@ -154,42 +165,6 @@ export default function RecycleBin() {
         )}
       </div>
 
-      {restoringTask ? (
-        <>
-          <div className="modal-backdrop" onClick={() => setRestoringTask(null)} />
-          <div className="modal" role="dialog" aria-modal="true">
-            <div className="modal-header">
-              <h3 className="modal-title">{t('recycle_bin.restore_title')}</h3>
-              <button
-                className="btn btn-ghost btn-icon btn-sm"
-                onClick={() => setRestoringTask(null)}
-                aria-label={t('common.close')}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="modal-body">
-              <p className="recycle-bin-restore-copy">
-                {t('recycle_bin.restore_confirm')}{' '}
-                <strong className="input-mono">{restoringTask.task_id}</strong>?
-              </p>
-              <div className="recycle-bin-restore-summary">
-                <span>{t('recycle_bin.restore_help')}</span>
-                <StatusBadge status={restoringTask.status} />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setRestoringTask(null)}>
-                {t('common.cancel')}
-              </button>
-              <button className="btn btn-primary" onClick={handleRestore} disabled={restoring}>
-                <RotateCcw size={16} aria-hidden="true" />
-                {t('recycle_bin.restore')}
-              </button>
-            </div>
-          </div>
-        </>
-      ) : null}
     </div>
   );
 }

@@ -7,7 +7,7 @@ interface Props {
 }
 
 export default function StatusBadge({ status }: Props) {
-  const { language } = useLanguageStore();
+  const { t } = useLanguageStore();
   const config = STATUS_CONFIG[status];
   if (!config) return <span>{status}</span>;
 
@@ -16,8 +16,10 @@ export default function StatusBadge({ status }: Props) {
       className="status-badge"
       style={{ color: config.color, backgroundColor: config.bgColor }}
     >
-      <span>{config.icon}</span>
-      {language === 'fa' ? config.labelFa : config.label}
+      {/* Decorative: screen readers would otherwise announce "grinning face"
+          where the label already says what the status is. */}
+      <span aria-hidden="true">{config.icon}</span>
+      {t(`status.${status}`)}
     </span>
   );
 }
