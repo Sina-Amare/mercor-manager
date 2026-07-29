@@ -204,7 +204,7 @@ export default function Payments() {
       )}
 
       <section className="section-gap">
-        <h2 className="section-heading">{t('payments.tasks_paid')}</h2>
+        <h2 className="section-heading">{t('payments.history_heading')}</h2>
         <div className="data-table-wrapper">
           {paidTasks.length === 0 ? (
             <div className="data-table-empty">

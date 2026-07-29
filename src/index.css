@@ -978,8 +978,8 @@ textarea:focus-visible,
 .filter-pills {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
-  overflow-x: auto;
   padding-bottom: 4px;
   margin-bottom: var(--space-4);
 }
@@ -1086,6 +1086,11 @@ textarea:focus-visible,
 }
 
 /* ─── Payment Cells ───────────────────────────────────────────────────────── */
+.payment-amount,
+.payment-amount-irr {
+  display: block;
+}
+
 .payment-amount {
   font-family: var(--font-mono);
   font-weight: var(--weight-semibold);
@@ -1311,33 +1316,6 @@ textarea:focus-visible,
 .task-studio-result > span,
 .task-studio-result .task-copy-heading > label {
   color: var(--color-purple);
-}
-
-.task-action-group {
-  align-items: stretch;
-  display: flex;
-  flex: 1 1 280px;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.task-action-group-next {
-  justify-content: flex-end;
-}
-
-.task-action-group-label {
-  color: var(--color-text-tertiary);
-  flex-basis: 100%;
-  font-family: var(--font-label);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.04em;
-}
-
-.task-action-group .btn {
-  flex: 1 1 150px;
-  min-width: 0;
 }
 
 .task-status-transition {
@@ -2827,6 +2805,7 @@ body {
 
 .settings-rate-input {
   align-items: center;
+  direction: ltr;
   display: flex;
   gap: var(--space-2);
 }
@@ -2905,8 +2884,8 @@ body {
 }
 
 .status-badge.role-member {
-  background: var(--color-primary-50);
-  color: var(--color-primary);
+  background: var(--color-card-subtle);
+  color: var(--color-text-secondary);
 }
 
 .status-badge.is-active {
@@ -3381,17 +3360,23 @@ body {
     padding: var(--space-4);
   }
 
-  .stage-tab span {
-    display: none;
+  /* Keep the names. Collapsing inactive tabs to icons left two identical
+     padlocks side by side, which says nothing; a scrolling bar says which
+     stages exist and which are still locked. */
+  .stage-tab {
+    flex: 0 0 auto;
   }
 
-  .stage-tab.active span {
-    display: inline;
+  /* Stacked, the bar is tall enough to cover most of a phone screen, so it
+     stops floating and just sits at the end of the page. */
+  .task-action-bar {
+    bottom: auto;
+    position: static;
   }
 
   .task-action-groups {
     flex-direction: column;
-    gap: var(--space-4);
+    gap: var(--space-3);
   }
 
   .task-action-group-next {
@@ -3416,4 +3401,20 @@ body {
     inset-inline-start: auto;
     inset-inline-end: 0;
   }
+}
+
+/* Inside tables the copy control is icon-only: the row already says what it
+   would be copying, and eleven repeated word-buttons crowd the task ID. */
+.data-table .copy-button-compact {
+  min-width: 0;
+  padding-inline: var(--space-2);
+}
+
+.data-table .copy-button-compact span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }

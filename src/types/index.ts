@@ -124,7 +124,7 @@ export const STATUS_CONFIG: Record<TaskStatus, StatusStyle> = {
   working: { color: '#075985', bgColor: '#E0F2FE', icon: '⚡' },
   // SWF — a flaw was found, which is the goal of the work, so it reads positive.
   swf: { color: '#166534', bgColor: '#DCFCE7', icon: '🎯' },
-  swof: { color: '#854D0E', bgColor: '#FEF9C3', icon: '○' },
+  swof: { color: '#854D0E', bgColor: '#FEF9C3', icon: '⚪' },
   member_discarded: { color: '#991B1B', bgColor: '#FDF2F2', icon: '🗑️' },
   on_hold: { color: '#3F3F46', bgColor: '#F4F4F5', icon: '⏸️' },
   in_studio: { color: '#581C87', bgColor: '#F3E8FF', icon: '🎬' },

@@ -1,6 +1,5 @@
 import { ArrowLeft, ArrowRight, RefreshCw } from 'lucide-react';
 import type { Task } from '../../../types';
-import { STATUS_CONFIG } from '../../../types';
 import { useLanguageStore } from '../../../store';
 import type { Transition } from '../../../workflow';
 
@@ -12,14 +11,24 @@ interface Props {
   dirty: boolean;
 }
 
-const TONE_BY_TARGET: Record<string, string> = {
+/**
+ * Colour marks the weight of a decision, so only moves that carry the task
+ * onward get any. Tinting by destination made "Back to SWF" a bright green
+ * call-to-action and "Back to Discarded" an alarming red, when both are just
+ * ways of undoing a step.
+ */
+const FORWARD_TONE: Record<string, string> = {
   member_discarded: 'btn-danger',
   admin_discarded: 'btn-danger',
   approved: 'btn-success',
-  swf: 'btn-success',
-  swof: 'btn-secondary',
   sent_back: 'btn-warning',
 };
+
+function toneFor(transition: Transition): string {
+  if (transition.kind === 'forward') return FORWARD_TONE[transition.to] || 'btn-primary';
+  if (transition.kind === 'sideways') return 'btn-outline';
+  return 'btn-secondary';
+}
 
 /**
  * Three groups, because "what can I do here" splits three ways: go on, go back,
@@ -35,18 +44,19 @@ export default function ActionBar({ task, transitions, onRun, saving, dirty }: P
 
   if (back.length + sideways.length + forward.length === 0) return null;
 
-  const renderButton = (transition: Transition, extraClass = '') => {
+  const renderButton = (transition: Transition) => {
     const blockedKey = transition.blockedBy?.(task) ?? null;
     return (
       <button
         key={`${transition.from}-${transition.to}`}
         type="button"
-        className={`btn btn-sm ${TONE_BY_TARGET[transition.to] || 'btn-secondary'} ${extraClass}`}
+        className={`btn btn-sm ${toneFor(transition)}`}
         onClick={() => onRun(transition)}
         disabled={saving || Boolean(blockedKey)}
         title={blockedKey ? t(blockedKey) : undefined}
       >
-        <span aria-hidden="true">{STATUS_CONFIG[transition.to].icon}</span>
+        {/* No status emoji here. Six different pictograms across one row of
+            buttons read as decoration, and the labels already say the thing. */}
         {t(transition.labelKey)}
       </button>
     );
@@ -78,7 +88,7 @@ export default function ActionBar({ task, transitions, onRun, saving, dirty }: P
               {t('tasks.correct_verdict')}
             </span>
             <div className="task-action-buttons">
-              {sideways.map((item) => renderButton(item, 'btn-outline'))}
+              {sideways.map((item) => renderButton(item))}
             </div>
           </div>
         )}
