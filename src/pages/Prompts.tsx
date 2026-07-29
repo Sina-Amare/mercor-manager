@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
-  Copy,
   Globe2,
   Loader2,
   MessageSquareText,
@@ -22,6 +21,7 @@ import {
 } from '../api/prompts';
 import type { PromptVisibility, SavedPrompt } from '../types';
 import DateDisplay from '../components/shared/DateDisplay';
+import CopyButton from '../components/shared/CopyButton';
 
 function sortPrompts(prompts: SavedPrompt[]) {
   return [...prompts].sort(
@@ -237,27 +237,6 @@ export default function Prompts() {
     }
   };
 
-  const handleCopy = async (prompt: SavedPrompt) => {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(prompt.body);
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = prompt.body;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        const copied = document.execCommand('copy');
-        textarea.remove();
-        if (!copied) throw new Error('Copy failed');
-      }
-      addToast(t('prompts.copied'), 'success');
-    } catch {
-      addToast(t('prompts.copy_error'), 'error');
-    }
-  };
-
   const canEdit = (prompt: SavedPrompt) =>
     prompt.created_by
       ? prompt.created_by === user?.id
@@ -392,14 +371,10 @@ export default function Prompts() {
                     <h2 dir="auto">{prompt.title}</h2>
                   </div>
                   <div className="prompt-card-actions">
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => void handleCopy(prompt)}
-                    >
-                      <Copy size={15} />
-                      {t('prompts.copy')}
-                    </button>
+                    <CopyButton
+                      text={prompt.body}
+                      ariaLabel={`${t('common.copy')}: ${prompt.title}`}
+                    />
                     {canEdit(prompt) ? (
                       <button
                         type="button"

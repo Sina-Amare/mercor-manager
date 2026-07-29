@@ -3,6 +3,7 @@ import { RotateCcw, Search, Trash2 } from 'lucide-react';
 import { restoreTask } from '../api/tasks';
 import StatusBadge from '../components/shared/StatusBadge';
 import DateDisplay from '../components/shared/DateDisplay';
+import CopyButton from '../components/shared/CopyButton';
 import { useAppStore, useLanguageStore, useToastStore } from '../store';
 import type { Task } from '../types';
 import { formatNumber } from '../utils/dates';
@@ -110,7 +111,14 @@ export default function RecycleBin() {
                 return (
                   <tr key={task.id}>
                     <td data-label={t('tasks.task_id')}>
-                      <span className="task-id">{task.task_id}</span>
+                      <div className="task-id-copy">
+                        <span className="task-id">{task.task_id}</span>
+                        <CopyButton
+                          text={task.task_id}
+                          compact
+                          ariaLabel={`${t('common.copy')}: ${task.task_id}`}
+                        />
+                      </div>
                     </td>
                     <td data-label={t('tasks.assigned_to')}>
                       <div className="member-cell">

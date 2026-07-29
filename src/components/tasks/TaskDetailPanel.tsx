@@ -17,6 +17,7 @@ import {
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../../store';
 import StatusBadge from '../shared/StatusBadge';
 import DateDisplay from '../shared/DateDisplay';
+import CopyButton from '../shared/CopyButton';
 import { TaskConflictError, updateTask as apiUpdateTask } from '../../api/tasks';
 import { formatCurrency, formatNumber, usdToIrr } from '../../utils/dates';
 
@@ -598,6 +599,11 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
       <div className="task-detail-header">
         <div className="task-detail-heading">
           <span className="task-id">{task.task_id}</span>
+          <CopyButton
+            text={task.task_id}
+            compact
+            ariaLabel={`${t('common.copy')}: ${t('tasks.task_id')}`}
+          />
           <StatusBadge status={task.status} />
         </div>
         <button
@@ -672,7 +678,14 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
 
         {/* Task Body / Text Prompt */}
         <div className="task-detail-field">
-          <div className="task-detail-field-label">{t('upload.body_label')}</div>
+          <div className="task-copy-heading">
+            <div className="task-detail-field-label">{t('upload.body_label')}</div>
+            <CopyButton
+              text={task.body}
+              compact
+              ariaLabel={`${t('common.copy')}: ${t('upload.body_label')}`}
+            />
+          </div>
           <div className="task-detail-body-text">{task.body}</div>
         </div>
 
@@ -749,9 +762,19 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
             ) : null}
 
             <div className="task-submission-grid">
-              <label className="task-submission-field">
-                <span>{t('tasks.submission_prompt')}</span>
+              <div className="task-submission-field">
+                <div className="task-copy-heading">
+                  <label htmlFor="task-submission-prompt">
+                    {t('tasks.submission_prompt')}
+                  </label>
+                  <CopyButton
+                    text={submissionPrompt}
+                    compact
+                    ariaLabel={`${t('common.copy')}: ${t('tasks.submission_prompt')}`}
+                  />
+                </div>
                 <textarea
+                  id="task-submission-prompt"
                   className="form-textarea task-submission-textarea"
                   value={submissionPrompt}
                   onChange={(event) => setSubmissionPrompt(event.target.value)}
@@ -760,11 +783,21 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
                   dir="auto"
                   disabled={!canEditSubmission || saving}
                 />
-              </label>
+              </div>
 
-              <label className="task-submission-field">
-                <span>{t('tasks.submission_dsp')}</span>
+              <div className="task-submission-field">
+                <div className="task-copy-heading">
+                  <label htmlFor="task-submission-dsp">
+                    {t('tasks.submission_dsp')}
+                  </label>
+                  <CopyButton
+                    text={submissionDsp}
+                    compact
+                    ariaLabel={`${t('common.copy')}: ${t('tasks.submission_dsp')}`}
+                  />
+                </div>
                 <textarea
+                  id="task-submission-dsp"
                   className="form-textarea task-submission-textarea"
                   value={submissionDsp}
                   onChange={(event) => setSubmissionDsp(event.target.value)}
@@ -773,11 +806,21 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
                   dir="auto"
                   disabled={!canEditSubmission || saving}
                 />
-              </label>
+              </div>
 
-              <label className="task-submission-field">
-                <span>{t('tasks.submission_final_answer')}</span>
+              <div className="task-submission-field">
+                <div className="task-copy-heading">
+                  <label htmlFor="task-submission-final-answer">
+                    {t('tasks.submission_final_answer')}
+                  </label>
+                  <CopyButton
+                    text={submissionFinalAnswer}
+                    compact
+                    ariaLabel={`${t('common.copy')}: ${t('tasks.submission_final_answer')}`}
+                  />
+                </div>
                 <textarea
+                  id="task-submission-final-answer"
                   className="form-textarea task-submission-textarea"
                   value={submissionFinalAnswer}
                   onChange={(event) => setSubmissionFinalAnswer(event.target.value)}
@@ -786,14 +829,21 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
                   dir="auto"
                   disabled={!canEditSubmission || saving}
                 />
-              </label>
+              </div>
 
-              <label className="task-submission-field">
-                <span>
-                  {task.status === 'in_studio'
-                    ? t('tasks.submission_notes_required')
-                    : t('tasks.submission_notes')}
-                </span>
+              <div className="task-submission-field">
+                <div className="task-copy-heading">
+                  <label htmlFor="task-submission-notes">
+                    {task.status === 'in_studio'
+                      ? t('tasks.submission_notes_required')
+                      : t('tasks.submission_notes')}
+                  </label>
+                  <CopyButton
+                    text={submissionNotes}
+                    compact
+                    ariaLabel={`${t('common.copy')}: ${t('tasks.submission_notes')}`}
+                  />
+                </div>
                 <textarea
                   id="task-submission-notes"
                   className="form-textarea task-submission-textarea"
@@ -806,13 +856,21 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
                   aria-required={task.status === 'in_studio'}
                   disabled={!canEditSubmission || saving}
                 />
-              </label>
+              </div>
             </div>
 
-            <label className="task-submission-field task-studio-result">
-              <span>{t('tasks.studio_result')}</span>
+            <div className="task-submission-field task-studio-result">
+              <div className="task-copy-heading">
+                <label htmlFor="task-studio-result">{t('tasks.studio_result')}</label>
+                <CopyButton
+                  text={studioResult}
+                  compact
+                  ariaLabel={`${t('common.copy')}: ${t('tasks.studio_result')}`}
+                />
+              </div>
               <small>{t('tasks.studio_result_help')}</small>
               <textarea
+                id="task-studio-result"
                 className="form-textarea task-submission-textarea"
                 value={studioResult}
                 onChange={(event) => setStudioResult(event.target.value)}
@@ -821,7 +879,7 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
                 dir="auto"
                 disabled={!canEditSubmission || saving}
               />
-            </label>
+            </div>
 
             {canEditSubmission ? (
               <div className="task-submission-actions">
@@ -843,7 +901,14 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
         {/* Admin Notes */}
         {isAdmin && (
           <div className="task-detail-field">
-            <div className="task-detail-field-label">{t('tasks.notes')}</div>
+            <div className="task-copy-heading">
+              <div className="task-detail-field-label">{t('tasks.notes')}</div>
+              <CopyButton
+                text={notes}
+                compact
+                ariaLabel={`${t('common.copy')}: ${t('tasks.notes')}`}
+              />
+            </div>
             <div style={{ background: 'var(--color-surface)', padding: 'var(--space-3)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
               <textarea
                 className="form-textarea"

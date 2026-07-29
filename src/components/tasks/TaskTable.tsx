@@ -5,6 +5,7 @@ import { TASK_STATUSES, STATUS_CONFIG } from '../../types';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../../store';
 import StatusBadge from '../shared/StatusBadge';
 import DateDisplay from '../shared/DateDisplay';
+import CopyButton from '../shared/CopyButton';
 import {
   moveTaskToTrash,
   moveTasksToTrash,
@@ -326,7 +327,14 @@ export default function TaskTable({
                     </td>
                   )}
                   <td>
-                    <span className="task-id">{task.task_id}</span>
+                    <div className="task-id-copy">
+                      <span className="task-id">{task.task_id}</span>
+                      <CopyButton
+                        text={task.task_id}
+                        compact
+                        ariaLabel={`${t('common.copy')}: ${task.task_id}`}
+                      />
+                    </div>
                   </td>
                   {showMember && (
                     <td>
