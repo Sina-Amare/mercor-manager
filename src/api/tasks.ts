@@ -780,6 +780,18 @@ export interface TaskRealtimeEvent {
   oldTask: Partial<Task> | null;
 }
 
+export interface UserRealtimeEvent {
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+  newUser: User | null;
+  oldUser: Partial<User> | null;
+}
+
+export interface SettingsRealtimeEvent {
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+  newSettings: AppSettings | null;
+  oldSettings: Partial<AppSettings> | null;
+}
+
 export function subscribeToTasks(
   callback: (event: TaskRealtimeEvent) => void,
   onStatus?: (status: string) => void
@@ -792,6 +804,62 @@ export function subscribeToTasks(
           eventType: payload.eventType as TaskRealtimeEvent['eventType'],
           newTask: payload.eventType === 'DELETE' ? null : payload.new as Task,
           oldTask: payload.old as Partial<Task>,
+        });
+      })
+      .subscribe((status) => onStatus?.(status));
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  } catch {
+    return () => {};
+  }
+}
+
+export function subscribeToUsers(
+  callback: (event: UserRealtimeEvent) => void,
+  onStatus?: (status: string) => void
+) {
+  try {
+    const channel = supabase
+      .channel(`public:users:${globalThis.crypto?.randomUUID?.() || Date.now()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, (payload) => {
+        const newUser =
+          payload.eventType === 'DELETE' || !isUser(payload.new)
+            ? null
+            : toPublicUser(payload.new);
+
+        callback({
+          eventType: payload.eventType as UserRealtimeEvent['eventType'],
+          newUser,
+          oldUser: payload.old as Partial<User>,
+        });
+      })
+      .subscribe((status) => onStatus?.(status));
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  } catch {
+    return () => {};
+  }
+}
+
+export function subscribeToSettings(
+  callback: (event: SettingsRealtimeEvent) => void,
+  onStatus?: (status: string) => void
+) {
+  try {
+    const channel = supabase
+      .channel(`public:settings:${globalThis.crypto?.randomUUID?.() || Date.now()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, (payload) => {
+        const newSettings =
+          payload.eventType === 'DELETE' ? null : payload.new as AppSettings;
+
+        callback({
+          eventType: payload.eventType as SettingsRealtimeEvent['eventType'],
+          newSettings,
+          oldSettings: payload.old as Partial<AppSettings>,
         });
       })
       .subscribe((status) => onStatus?.(status));

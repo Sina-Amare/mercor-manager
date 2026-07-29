@@ -2,7 +2,14 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from './store';
 import { restoreSession } from './api/auth';
-import { fetchTasks, fetchAllUsers, fetchSettings, subscribeToTasks } from './api/tasks';
+import {
+  fetchTasks,
+  fetchAllUsers,
+  fetchSettings,
+  subscribeToTasks,
+  subscribeToUsers,
+  subscribeToSettings,
+} from './api/tasks';
 import AppShell from './components/layout/AppShell';
 import { TASK_STATUSES } from './types';
 
@@ -39,7 +46,16 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function AppContent() {
   const { isAuthenticated } = useAuthStore();
   const { language } = useLanguageStore();
-  const { setTasks, setMembers, setSettings, addTask, removeTask } = useAppStore();
+  const {
+    setTasks,
+    setMembers,
+    setSettings,
+    addTask,
+    removeTask,
+    addMember,
+    updateMember,
+    removeMember,
+  } = useAppStore();
   const { addToast } = useToastStore();
   const [loading, setLoading] = useState(true);
 
@@ -169,6 +185,178 @@ function AppContent() {
       unsubscribe();
     };
   }, [addTask, isAuthenticated, removeTask, setTasks]);
+
+  // Keep users and shared settings synchronized across browsers and devices.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let active = true;
+    let usersRefreshInFlight = false;
+    let usersRefreshQueued = false;
+    let usersRealtimeRevision = 0;
+    let settingsRefreshInFlight = false;
+    let settingsRefreshQueued = false;
+    let settingsRealtimeRevision = 0;
+
+    const updateSessionUser = (users: Awaited<ReturnType<typeof fetchAllUsers>>) => {
+      const authStore = useAuthStore.getState();
+      const sessionUser = authStore.user;
+      if (!sessionUser) return false;
+
+      const freshUser = users.find((candidate) => candidate.id === sessionUser.id);
+      if (!freshUser || !freshUser.is_active) {
+        authStore.logout();
+        addToast('Your account was removed or deactivated', 'error');
+        return false;
+      }
+
+      if (
+        freshUser.updated !== sessionUser.updated ||
+        freshUser.username !== sessionUser.username ||
+        freshUser.name !== sessionUser.name ||
+        freshUser.role !== sessionUser.role ||
+        freshUser.is_active !== sessionUser.is_active
+      ) {
+        authStore.updateUser(freshUser);
+      }
+      return true;
+    };
+
+    const refreshUsers = async () => {
+      if (usersRefreshInFlight) {
+        usersRefreshQueued = true;
+        return;
+      }
+
+      usersRefreshInFlight = true;
+      const revisionAtStart = usersRealtimeRevision;
+      try {
+        const users = await fetchAllUsers();
+        if (
+          active &&
+          revisionAtStart === usersRealtimeRevision &&
+          updateSessionUser(users)
+        ) {
+          setMembers(users);
+        }
+      } catch (error) {
+        console.error('Failed to synchronize users:', error);
+      } finally {
+        usersRefreshInFlight = false;
+        if (active && usersRefreshQueued) {
+          usersRefreshQueued = false;
+          void refreshUsers();
+        }
+      }
+    };
+
+    const refreshSettings = async () => {
+      if (settingsRefreshInFlight) {
+        settingsRefreshQueued = true;
+        return;
+      }
+
+      settingsRefreshInFlight = true;
+      const revisionAtStart = settingsRealtimeRevision;
+      try {
+        const settings = await fetchSettings();
+        if (active && revisionAtStart === settingsRealtimeRevision) {
+          setSettings(settings);
+        }
+      } catch (error) {
+        console.error('Failed to synchronize settings:', error);
+      } finally {
+        settingsRefreshInFlight = false;
+        if (active && settingsRefreshQueued) {
+          settingsRefreshQueued = false;
+          void refreshSettings();
+        }
+      }
+    };
+
+    const handleSubscriptionStatus = (refresh: () => Promise<void>) => (status: string) => {
+      if (
+        status === 'SUBSCRIBED' ||
+        status === 'CHANNEL_ERROR' ||
+        status === 'TIMED_OUT' ||
+        status === 'CLOSED'
+      ) {
+        void refresh();
+      }
+    };
+
+    const unsubscribeUsers = subscribeToUsers(
+      ({ eventType, newUser, oldUser }) => {
+        if (!active) return;
+        usersRealtimeRevision += 1;
+
+        const affectedUserId = newUser?.id || oldUser?.id;
+        const sessionUser = useAuthStore.getState().user;
+        if (affectedUserId && affectedUserId === sessionUser?.id) {
+          if (eventType === 'DELETE' || !newUser?.is_active) {
+            useAuthStore.getState().logout();
+            addToast('Your account was removed or deactivated', 'error');
+            return;
+          }
+          if (newUser) useAuthStore.getState().updateUser(newUser);
+        }
+
+        if (eventType === 'DELETE') {
+          if (affectedUserId) removeMember(affectedUserId);
+        } else if (newUser) {
+          if (eventType === 'INSERT') addMember(newUser);
+          else updateMember(newUser.id, newUser);
+        }
+
+        // Reconcile the complete list in case the websocket payload was partial.
+        void refreshUsers();
+      },
+      handleSubscriptionStatus(refreshUsers)
+    );
+
+    const unsubscribeSettings = subscribeToSettings(
+      ({ eventType, newSettings }) => {
+        if (!active) return;
+        settingsRealtimeRevision += 1;
+        if (eventType !== 'DELETE' && newSettings) setSettings(newSettings);
+        void refreshSettings();
+      },
+      handleSubscriptionStatus(refreshSettings)
+    );
+
+    const refreshSharedData = () => {
+      void refreshUsers();
+      void refreshSettings();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshSharedData();
+    };
+    const syncTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') refreshSharedData();
+    }, 4000);
+
+    window.addEventListener('focus', refreshSharedData);
+    window.addEventListener('online', refreshSharedData);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      active = false;
+      window.clearInterval(syncTimer);
+      window.removeEventListener('focus', refreshSharedData);
+      window.removeEventListener('online', refreshSharedData);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      unsubscribeUsers();
+      unsubscribeSettings();
+    };
+  }, [
+    addMember,
+    addToast,
+    isAuthenticated,
+    removeMember,
+    setMembers,
+    setSettings,
+    updateMember,
+  ]);
 
   if (loading) {
     return <LoadingScreen />;
