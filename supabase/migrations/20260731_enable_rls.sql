@@ -122,6 +122,40 @@ alter table public.tasks       enable row level security;
 alter table public.settings    enable row level security;
 alter table public.task_events enable row level security;
 
+-- Drop every pre-existing policy on these tables before installing ours.
+--
+-- This project carried dormant "Public <table> access" policies granting ALL to
+-- role `public` with `using (true)`. They were invisible while RLS was off, and
+-- because permissive policies OR together, enabling RLS would have activated
+-- them and left the tables wide open to any signed-in user. Sweeping by name
+-- rather than dropping three known ones also catches anything added later.
+do $$
+declare
+  policy_record record;
+  expected text[] := array[
+    'users_select',
+    'tasks_select', 'tasks_insert', 'tasks_update',
+    'settings_select', 'settings_write',
+    'task_events_select',
+    'prompts_select', 'prompts_insert', 'prompts_update', 'prompts_delete'
+  ];
+begin
+  for policy_record in
+    select schemaname, tablename, policyname
+    from pg_policies
+    where schemaname = 'public'
+      and tablename in ('users', 'tasks', 'settings', 'task_events', 'prompts')
+      and not (policyname = any (expected))
+  loop
+    raise notice 'dropping legacy policy % on %', policy_record.policyname, policy_record.tablename;
+    execute format(
+      'drop policy if exists %I on %I.%I',
+      policy_record.policyname, policy_record.schemaname, policy_record.tablename
+    );
+  end loop;
+end
+$$;
+
 -- users: every signed-in account can read the roster (assignee names, avatars).
 -- No client writes at all.
 drop policy if exists users_select on public.users;

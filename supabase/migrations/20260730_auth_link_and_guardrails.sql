@@ -164,19 +164,19 @@ begin
     return new;
   end if;
 
-  if new.status          is distinct from old.status          then fields := fields || 'status'; end if;
-  if new.assigned_to     is distinct from old.assigned_to     then fields := fields || 'assigned_to'; end if;
-  if new.member_verdict  is distinct from old.member_verdict  then fields := fields || 'member_verdict'; end if;
-  if new.admin_verdict   is distinct from old.admin_verdict   then fields := fields || 'admin_verdict'; end if;
-  if new.admin_notes     is distinct from old.admin_notes     then fields := fields || 'admin_notes'; end if;
-  if new.payment_status  is distinct from old.payment_status  then fields := fields || 'payment_status'; end if;
-  if new.payment_amount_usd is distinct from old.payment_amount_usd then fields := fields || 'payment_amount_usd'; end if;
-  if new.submission_prompt is distinct from old.submission_prompt then fields := fields || 'submission_prompt'; end if;
-  if new.submission_dsp  is distinct from old.submission_dsp  then fields := fields || 'submission_dsp'; end if;
-  if new.submission_final_answer is distinct from old.submission_final_answer then fields := fields || 'submission_final_answer'; end if;
-  if new.submission_notes is distinct from old.submission_notes then fields := fields || 'submission_notes'; end if;
-  if new.studio_result   is distinct from old.studio_result   then fields := fields || 'studio_result'; end if;
-  if new.deleted_at      is distinct from old.deleted_at      then fields := fields || 'deleted_at'; end if;
+  if new.status          is distinct from old.status          then fields := array_append(fields, 'status'); end if;
+  if new.assigned_to     is distinct from old.assigned_to     then fields := array_append(fields, 'assigned_to'); end if;
+  if new.member_verdict  is distinct from old.member_verdict  then fields := array_append(fields, 'member_verdict'); end if;
+  if new.admin_verdict   is distinct from old.admin_verdict   then fields := array_append(fields, 'admin_verdict'); end if;
+  if new.admin_notes     is distinct from old.admin_notes     then fields := array_append(fields, 'admin_notes'); end if;
+  if new.payment_status  is distinct from old.payment_status  then fields := array_append(fields, 'payment_status'); end if;
+  if new.payment_amount_usd is distinct from old.payment_amount_usd then fields := array_append(fields, 'payment_amount_usd'); end if;
+  if new.submission_prompt is distinct from old.submission_prompt then fields := array_append(fields, 'submission_prompt'); end if;
+  if new.submission_dsp  is distinct from old.submission_dsp  then fields := array_append(fields, 'submission_dsp'); end if;
+  if new.submission_final_answer is distinct from old.submission_final_answer then fields := array_append(fields, 'submission_final_answer'); end if;
+  if new.submission_notes is distinct from old.submission_notes then fields := array_append(fields, 'submission_notes'); end if;
+  if new.studio_result   is distinct from old.studio_result   then fields := array_append(fields, 'studio_result'); end if;
+  if new.deleted_at      is distinct from old.deleted_at      then fields := array_append(fields, 'deleted_at'); end if;
 
   if array_length(fields, 1) is null then
     return new;
