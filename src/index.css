@@ -471,7 +471,7 @@ textarea:focus-visible,
   display: none;
 }
 
-.sidebar-mobile-toggle {
+.sidebar-mobile-toggle.btn {
   position: fixed;
   top: 14px;
   inset-inline-start: 12px;
@@ -1493,7 +1493,7 @@ textarea:focus-visible,
 
 /* ─── Responsive Adjustments ──────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .sidebar-mobile-toggle {
+  .sidebar-mobile-toggle.btn {
     display: inline-flex;
   }
 
