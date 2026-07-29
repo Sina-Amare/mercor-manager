@@ -479,6 +479,11 @@ textarea:focus-visible,
   background: var(--color-card);
   border-color: var(--color-border);
   box-shadow: var(--shadow-sm);
+  transition:
+    inset-inline-start var(--transition-slow),
+    color var(--transition-fast),
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 /* ─── Main Page Canvas ────────────────────────────────────────────────────── */
@@ -1480,6 +1485,10 @@ textarea:focus-visible,
     display: inline-flex;
   }
 
+  .sidebar-mobile-toggle.is-open {
+    inset-inline-start: calc(var(--sidebar-width) - 48px);
+  }
+
   .sidebar-backdrop {
     display: block;
     position: fixed;
@@ -1490,16 +1499,26 @@ textarea:focus-visible,
     backdrop-filter: blur(2px);
   }
 
-  .sidebar {
-    transform: translateX(-100%);
-  }
-  
-  [dir="rtl"] .sidebar {
-    transform: translateX(100%);
+  .sidebar[data-mobile-open="false"] {
+    visibility: hidden;
+    pointer-events: none;
+    transform: translate3d(-100%, 0, 0);
+    transition:
+      transform var(--transition-slow),
+      visibility 0s linear var(--transition-slow);
   }
 
-  .sidebar.open {
-    transform: translateX(0);
+  [dir="rtl"] .sidebar[data-mobile-open="false"] {
+    transform: translate3d(100%, 0, 0);
+  }
+
+  .sidebar[data-mobile-open="true"] {
+    visibility: visible;
+    pointer-events: auto;
+    transform: translate3d(0, 0, 0);
+    transition:
+      transform var(--transition-slow),
+      visibility 0s;
   }
 
   .app-main {

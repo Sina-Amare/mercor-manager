@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore, useLanguageStore, useAppStore } from '../../store';
 import { logout } from '../../api/auth';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { formatNumber } from '../../utils/dates';
 
 export default function Sidebar() {
@@ -49,10 +49,38 @@ export default function Sidebar() {
     }
   };
 
+  useEffect(() => {
+    if (!sidebarOpen || !window.matchMedia('(max-width: 768px)').matches) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSidebarOpen(false);
+    };
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [setSidebarOpen, sidebarOpen]);
+
+  useEffect(() => {
+    const mobileViewport = window.matchMedia('(max-width: 768px)');
+    const handleViewportChange = (event: MediaQueryListEvent) => {
+      if (!event.matches) setSidebarOpen(false);
+    };
+
+    mobileViewport.addEventListener('change', handleViewportChange);
+    return () => mobileViewport.removeEventListener('change', handleViewportChange);
+  }, [setSidebarOpen]);
+
   return (
     <>
       <button
-        className="sidebar-mobile-toggle btn btn-icon btn-ghost"
+        type="button"
+        className={`sidebar-mobile-toggle btn btn-icon btn-ghost ${sidebarOpen ? 'is-open' : ''}`}
         onClick={() => setSidebarOpen(!sidebarOpen)}
         aria-label={sidebarOpen ? t('common.close_navigation') : t('common.open_navigation')}
         aria-expanded={sidebarOpen}
@@ -71,6 +99,7 @@ export default function Sidebar() {
 
       <aside
         className={`sidebar ${sidebarOpen ? 'open' : ''}`}
+        data-mobile-open={sidebarOpen}
         onClick={handleSidebarClick}
         aria-label={t('common.primary_navigation')}
       >
