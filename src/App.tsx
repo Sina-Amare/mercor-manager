@@ -22,6 +22,7 @@ const StatusView = lazy(() => import('./pages/StatusView'));
 const Payments = lazy(() => import('./pages/Payments'));
 const Settings = lazy(() => import('./pages/Settings'));
 const TaskWorkspace = lazy(() => import('./pages/TaskWorkspace'));
+const Prompts = lazy(() => import('./pages/Prompts'));
 
 function LoadingScreen() {
   return (
@@ -385,6 +386,7 @@ function AppContent() {
           <Route path="/status/:status" element={<StatusView />} />
           <Route path="/payments" element={<Payments />} />
           <Route path="/task/:taskId" element={<TaskWorkspace />} />
+          <Route path="/prompts" element={<Prompts />} />
 
           {/* Member Routes */}
           <Route

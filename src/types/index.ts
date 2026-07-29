@@ -105,6 +105,21 @@ export interface AppSettings {
   updated: string;
 }
 
+// ─── Saved Prompts ──────────────────────────────────────────────────────────
+
+export type PromptVisibility = 'public' | 'personal';
+
+export interface SavedPrompt {
+  id: string;
+  title: string;
+  body: string;
+  visibility: PromptVisibility;
+  owner_id: string | null;
+  created_by: string | null;
+  created: string;
+  updated: string;
+}
+
 // ─── UI Types ────────────────────────────────────────────────────────────────
 
 export type Language = 'en' | 'fa';

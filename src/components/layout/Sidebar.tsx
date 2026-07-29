@@ -14,6 +14,7 @@ import {
   X,
   ChevronRight,
   AlertCircle,
+  MessageSquareText,
 } from 'lucide-react';
 import { useAuthStore, useLanguageStore, useAppStore } from '../../store';
 import { logout } from '../../api/auth';
@@ -137,6 +138,12 @@ export default function Sidebar() {
                     <span className="sidebar-link-badge">{formatNumber(tasks.length, language)}</span>
                   </NavLink>
                 </li>
+                <li>
+                  <NavLink to="/prompts" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+                    <MessageSquareText size={18} className="sidebar-link-icon" />
+                    {t('nav.prompts')}
+                  </NavLink>
+                </li>
               </ul>
             </div>
 
@@ -230,6 +237,12 @@ export default function Sidebar() {
                         language
                       )}
                     </span>
+                  </NavLink>
+                </li>
+                <li>
+                  <NavLink to="/prompts" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+                    <MessageSquareText size={18} className="sidebar-link-icon" />
+                    {t('nav.prompts')}
                   </NavLink>
                 </li>
               </ul>

@@ -1,0 +1,157 @@
+import { supabase } from './supabase';
+import type { SavedPrompt, User } from '../types';
+
+const PROMPT_FIELDS =
+  'id,title,body,visibility,owner_id,created_by,created,updated';
+
+function errorCode(error: unknown) {
+  if (error && typeof error === 'object' && 'code' in error) {
+    return String(error.code);
+  }
+  return '';
+}
+
+function promptError(action: string, error: unknown) {
+  if (errorCode(error) === 'PGRST205' || errorCode(error) === '42P01') {
+    return new Error('Prompt storage has not been configured in Supabase yet');
+  }
+  const message =
+    error instanceof Error
+      ? error.message
+      : error && typeof error === 'object' && 'message' in error
+        ? String(error.message)
+        : 'Unknown cloud error';
+  return new Error(`${action} failed in Supabase: ${message}`);
+}
+
+function canManagePrompt(prompt: SavedPrompt, actor: User) {
+  return prompt.visibility === 'public'
+    ? actor.role === 'admin'
+    : prompt.owner_id === actor.id;
+}
+
+export async function fetchPrompts(userId: string): Promise<SavedPrompt[]> {
+  const { data, error } = await supabase
+    .from('prompts')
+    .select(PROMPT_FIELDS)
+    .or(`visibility.eq.public,owner_id.eq.${userId}`)
+    .order('updated', { ascending: false });
+
+  if (error) throw promptError('Fetching prompts', error);
+  return (data || []) as SavedPrompt[];
+}
+
+export async function createPrompt(
+  input: { title: string; body: string; visibility: SavedPrompt['visibility'] },
+  actor: User
+): Promise<SavedPrompt> {
+  const title = input.title.trim();
+  const body = input.body.trim();
+  if (!title || !body) throw new Error('Prompt title and content are required');
+  if (input.visibility === 'public' && actor.role !== 'admin') {
+    throw new Error('Only admins can create shared prompts');
+  }
+
+  const now = new Date().toISOString();
+  const prompt: SavedPrompt = {
+    id: `prompt_${globalThis.crypto?.randomUUID?.() || Date.now()}`,
+    title,
+    body,
+    visibility: input.visibility,
+    owner_id: input.visibility === 'personal' ? actor.id : null,
+    created_by: actor.id,
+    created: now,
+    updated: now,
+  };
+
+  const { data, error } = await supabase
+    .from('prompts')
+    .insert(prompt)
+    .select(PROMPT_FIELDS)
+    .single();
+
+  if (error) throw promptError('Creating prompt', error);
+  return data as SavedPrompt;
+}
+
+export async function updatePrompt(
+  id: string,
+  updates: { title: string; body: string },
+  actor: User
+): Promise<SavedPrompt> {
+  const title = updates.title.trim();
+  const body = updates.body.trim();
+  if (!title || !body) throw new Error('Prompt title and content are required');
+
+  const { data: currentData, error: currentError } = await supabase
+    .from('prompts')
+    .select(PROMPT_FIELDS)
+    .eq('id', id)
+    .maybeSingle();
+  if (currentError) throw promptError('Loading prompt', currentError);
+  if (!currentData) throw new Error('Prompt no longer exists');
+
+  const current = currentData as SavedPrompt;
+  if (!canManagePrompt(current, actor)) {
+    throw new Error('You do not have permission to edit this prompt');
+  }
+
+  const { data, error } = await supabase
+    .from('prompts')
+    .update({ title, body, updated: new Date().toISOString() })
+    .eq('id', id)
+    .select(PROMPT_FIELDS)
+    .single();
+
+  if (error) throw promptError('Updating prompt', error);
+  return data as SavedPrompt;
+}
+
+export async function deletePrompt(id: string, actor: User): Promise<void> {
+  const { data: currentData, error: currentError } = await supabase
+    .from('prompts')
+    .select(PROMPT_FIELDS)
+    .eq('id', id)
+    .maybeSingle();
+  if (currentError) throw promptError('Loading prompt', currentError);
+  if (!currentData) return;
+
+  const current = currentData as SavedPrompt;
+  if (!canManagePrompt(current, actor)) {
+    throw new Error('You do not have permission to delete this prompt');
+  }
+
+  const { error } = await supabase.from('prompts').delete().eq('id', id);
+  if (error) throw promptError('Deleting prompt', error);
+}
+
+export interface PromptRealtimeEvent {
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+  newPrompt: SavedPrompt | null;
+  oldPrompt: Partial<SavedPrompt> | null;
+}
+
+export function subscribeToPrompts(
+  callback: (event: PromptRealtimeEvent) => void,
+  onStatus?: (status: string) => void
+) {
+  try {
+    const channel = supabase
+      .channel(`public:prompts:${globalThis.crypto?.randomUUID?.() || Date.now()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prompts' }, (payload) => {
+        callback({
+          eventType: payload.eventType as PromptRealtimeEvent['eventType'],
+          newPrompt:
+            payload.eventType === 'DELETE' ? null : payload.new as SavedPrompt,
+          oldPrompt: payload.old as Partial<SavedPrompt>,
+        });
+      })
+      .subscribe((status) => onStatus?.(status));
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  } catch {
+    return () => {};
+  }
+}

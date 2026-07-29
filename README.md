@@ -1,8 +1,9 @@
 # AGNUS Task Management
 
 AGNUS is a bilingual (English/Persian) task workflow for assigning Mercor work,
-tracking member and studio verdicts, and recording payments. It is a static
-React application backed by Supabase and deployed to GitHub Pages.
+tracking member and studio verdicts, recording payments, and sharing reusable
+team and personal prompts. It is a static React application backed by Supabase
+and deployed to GitHub Pages.
 
 ## Workflow
 
@@ -47,8 +48,8 @@ Keep local fallback disabled in production. When disabled, failed cloud writes
 surface an error instead of creating browser-only data that other users can
 never receive.
 
-See [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md) for the Realtime and data
-integrity migration.
+See [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md) for the Realtime, prompt
+workspace, and data integrity migrations.
 
 ## Architecture
 
@@ -56,6 +57,7 @@ integrity migration.
   Realtime subscription.
 - `src/store`: Zustand session, language, task, member, and UI state.
 - `src/pages`: role-specific dashboards and workflow screens.
+- `src/pages/Prompts.tsx`: shared team prompts and per-user personal prompts.
 - `src/components/tasks`: task tables and the workflow detail drawer.
 - `src/i18n`: English and Persian strings.
 

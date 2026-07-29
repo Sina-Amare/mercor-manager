@@ -9,17 +9,23 @@ The URL and publishable key belong in `.env`; copy `.env.example` when setting
 up a new Windows checkout. Never place a service-role key in a Vite variable or
 commit it to the repository.
 
-## Realtime and task integrity
+## Database migrations
 
-Apply `supabase/migrations/20260728_realtime_task_integrity.sql` in the Supabase
-SQL editor. It:
+Apply these files in filename order through the Supabase SQL editor:
 
-- publishes `public.tasks` through Supabase Realtime;
-- prevents duplicate task IDs and usernames, ignoring case and surrounding
-  whitespace.
+1. `supabase/migrations/20260728_realtime_task_integrity.sql`
+2. `supabase/migrations/20260729_prompts_workspace.sql`
 
-After applying it, verify that `tasks` appears under **Database → Publications
-→ supabase_realtime**.
+Together they:
+
+- publish `public.tasks` and `public.prompts` through Supabase Realtime;
+- prevent duplicate task IDs and usernames, ignoring case and surrounding
+  whitespace;
+- create the shared and per-user prompt library with ownership, timestamps,
+  validation, and cleanup when a user is deleted.
+
+After applying them, verify that `tasks` and `prompts` appear under
+**Database → Publications → supabase_realtime**.
 
 The application subscribes after authentication and reconciles the full task
 list after every connection or reconnect. Inserts are upserted into the Zustand
@@ -45,3 +51,8 @@ Realtime data integrity is separate from authorization. The current custom
 users-table login is not sufficient for role-aware RLS. Complete the backend
 authentication migration described in `docs/SECURITY_AUDIT.md` before storing
 sensitive data or allowing untrusted users.
+
+Until that authentication migration is complete, personal prompts are scoped
+to their owner in the AGNUS interface but cannot be treated as secret data:
+the legacy publishable-key backend cannot enforce the custom user identity in
+Row Level Security.
