@@ -36,18 +36,21 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
 
 /**
  * Cheap probe so the UI can decide whether to render AI controls at all.
- * A rejected probe is a definite "no"; anything else is treated as available
- * and any real failure surfaces later as a toast.
+ *
+ * Fails closed: only a successful probe counts as available. Treating anything
+ * that is not literally "not configured" as working meant an expired token or a
+ * gateway 401 would leave the AI buttons on screen, failing on every click.
+ * A button that is not there beats a button that does not work.
  */
 export async function checkAiAvailable(): Promise<boolean> {
   if (availability !== null) return availability;
   try {
     await call<{ text: string }>({ task: 'translate', text: '' });
-    return true;
-  } catch (error) {
-    availability = !(error instanceof Error && error.message.includes('not configured'));
-    return availability;
+    availability = true;
+  } catch {
+    availability = false;
   }
+  return availability;
 }
 
 /** Rewrites a field into clear English. The result is always shown for review. */
