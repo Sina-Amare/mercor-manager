@@ -21,6 +21,17 @@ export const TASK_STATUSES = [
 ] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
+export const MEMBER_ACTIVE_STATUSES: readonly TaskStatus[] = [
+  'working',
+  'sent_back',
+  'swf',
+  'swof',
+  'member_discarded',
+  'on_hold',
+  'in_studio',
+  'in_review',
+];
+
 export const PAYMENT_STATUSES = ['not_applicable', 'pending', 'paid'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 

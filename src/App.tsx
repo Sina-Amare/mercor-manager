@@ -11,7 +11,7 @@ import {
   subscribeToSettings,
 } from './api/tasks';
 import AppShell from './components/layout/AppShell';
-import { TASK_STATUSES } from './types';
+import { MEMBER_ACTIVE_STATUSES, TASK_STATUSES } from './types';
 
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -397,7 +397,7 @@ function AppContent() {
             path="/working"
             element={
               <StatusView
-                fixedStatuses={['working', 'sent_back', 'swf', 'swof', 'member_discarded']}
+                fixedStatuses={MEMBER_ACTIVE_STATUSES}
                 titleKey="nav.working"
               />
             }

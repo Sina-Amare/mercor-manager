@@ -97,7 +97,6 @@ interface AppState {
 
   // UI State
   selectedTaskIds: string[];
-  taskDetailId: string | null;
   sidebarOpen: boolean;
 
   // Actions - Data
@@ -118,7 +117,6 @@ interface AppState {
   toggleTaskSelection: (id: string) => void;
   selectAllTasks: (ids: string[]) => void;
   clearSelection: () => void;
-  setTaskDetail: (id: string | null) => void;
   setSidebarOpen: (open: boolean) => void;
 
   // Computed
@@ -139,7 +137,6 @@ export const useAppStore = create<AppState>()((set, get) => ({
   members: [],
   settings: defaultSettings,
   selectedTaskIds: [],
-  taskDetailId: null,
   sidebarOpen: false,
 
   setTasks: (tasks) =>
@@ -249,7 +246,6 @@ export const useAppStore = create<AppState>()((set, get) => ({
     })),
   selectAllTasks: (ids) => set({ selectedTaskIds: ids }),
   clearSelection: () => set({ selectedTaskIds: [] }),
-  setTaskDetail: (id) => set({ taskDetailId: id }),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
   getTasksByStatus: (status) => get().tasks.filter((t) => t.status === status),

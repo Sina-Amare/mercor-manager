@@ -20,6 +20,7 @@ import { useAuthStore, useLanguageStore, useAppStore } from '../../store';
 import { logout } from '../../api/auth';
 import { useEffect, useState } from 'react';
 import { formatNumber } from '../../utils/dates';
+import { MEMBER_ACTIVE_STATUSES } from '../../types';
 
 export default function Sidebar() {
   const { user } = useAuthStore();
@@ -230,9 +231,7 @@ export default function Sidebar() {
                         tasks.filter(
                           (t) =>
                             t.assigned_to === user?.id &&
-                            ['working', 'sent_back', 'swf', 'swof', 'member_discarded'].includes(
-                              t.status
-                            )
+                            MEMBER_ACTIVE_STATUSES.includes(t.status)
                         ).length,
                         language
                       )}

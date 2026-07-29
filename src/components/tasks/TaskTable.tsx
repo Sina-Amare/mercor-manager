@@ -5,7 +5,6 @@ import { TASK_STATUSES, STATUS_CONFIG } from '../../types';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../../store';
 import StatusBadge from '../shared/StatusBadge';
 import DateDisplay from '../shared/DateDisplay';
-import TaskDetailPanel from './TaskDetailPanel';
 import { deleteTask, deleteTasks, updateTasks as apiUpdateTasks } from '../../api/tasks';
 import { formatCurrency, formatNumber, usdToIrr } from '../../utils/dates';
 import { useNavigate } from 'react-router-dom';
@@ -31,7 +30,7 @@ export default function TaskTable({
 }: Props) {
   const { user } = useAuthStore();
   const { t, language } = useLanguageStore();
-  const { selectedTaskIds, toggleTaskSelection, selectAllTasks, clearSelection, setTaskDetail, taskDetailId, removeTask, removeTasks, members, settings, updateTask } = useAppStore();
+  const { selectedTaskIds, toggleTaskSelection, selectAllTasks, clearSelection, removeTask, removeTasks, members, settings, updateTask } = useAppStore();
   const { addToast } = useToastStore();
   const isAdmin = user?.role === 'admin';
   const navigate = useNavigate();
@@ -182,10 +181,6 @@ export default function TaskTable({
     }
   };
 
-  const selectedTask = taskDetailId
-    ? inputTasks.find((t) => t.id === taskDetailId) || null
-    : null;
-
   return (
     <div className="page">
       <div className="page-header">
@@ -288,20 +283,17 @@ export default function TaskTable({
               {filteredTasks.map((task) => (
                 <tr
                   key={task.id}
-                  className={`${activeSelectedTaskIds.includes(task.id) ? 'selected' : ''} ${
-                    !isAdmin ? 'clickable-row' : ''
-                  }`}
-                  tabIndex={!isAdmin ? 0 : undefined}
+                  className={`${activeSelectedTaskIds.includes(task.id) ? 'selected' : ''} clickable-row`}
+                  tabIndex={0}
                   onClick={(event) => {
                     if (
-                      !isAdmin &&
                       !(event.target as HTMLElement).closest('button, input, a, select')
                     ) {
                       navigate(`/task/${task.id}`);
                     }
                   }}
                   onKeyDown={(event) => {
-                    if (!isAdmin && (event.key === 'Enter' || event.key === ' ')) {
+                    if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
                       navigate(`/task/${task.id}`);
                     }
@@ -356,17 +348,12 @@ export default function TaskTable({
                     <td>
                       <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
                         <button
-                          className="btn btn-ghost btn-icon btn-sm"
-                          title={t('tasks.view_detail')}
-                          onClick={() => {
-                            if (isAdmin) {
-                              setTaskDetail(task.id);
-                            } else {
-                              navigate(`/task/${task.id}`);
-                            }
-                          }}
+                          className="btn btn-secondary btn-sm"
+                          title={t('tasks.open_workspace')}
+                          onClick={() => navigate(`/task/${task.id}`)}
                         >
                           <Eye size={16} />
+                          {t('tasks.open')}
                         </button>
                         {isAdmin && (
                           <button
@@ -518,14 +505,6 @@ export default function TaskTable({
               </button>
             </div>
           </div>
-        </>
-      )}
-
-      {/* Task Detail Panel */}
-      {selectedTask && (
-        <>
-          <div className="modal-backdrop" onClick={() => setTaskDetail(null)} />
-          <TaskDetailPanel task={selectedTask} onClose={() => setTaskDetail(null)} />
         </>
       )}
     </div>

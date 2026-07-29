@@ -1,6 +1,19 @@
-import { useState, useEffect } from 'react';
-import { X, Save, CheckCircle, ArrowRight, ArrowLeft, AlertCircle } from 'lucide-react';
-import { STATUS_CONFIG, type Task, type TaskStatus } from '../../types';
+import { useState, useEffect, useRef } from 'react';
+import {
+  X,
+  Save,
+  CheckCircle,
+  ArrowRight,
+  ArrowLeft,
+  AlertCircle,
+  RotateCcw,
+} from 'lucide-react';
+import {
+  MEMBER_VERDICTS,
+  STATUS_CONFIG,
+  type Task,
+  type TaskStatus,
+} from '../../types';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../../store';
 import StatusBadge from '../shared/StatusBadge';
 import DateDisplay from '../shared/DateDisplay';
@@ -12,6 +25,34 @@ interface Props {
   onClose: () => void;
   variant?: 'drawer' | 'page';
 }
+
+interface TaskAction {
+  label: string;
+  status: TaskStatus;
+  color: string;
+  kind?: 'forward' | 'revert';
+  extraData?: Partial<Task>;
+}
+
+const SUBMISSION_VISIBLE_STATUSES: readonly TaskStatus[] = [
+  'swf',
+  'swof',
+  'on_hold',
+  'in_studio',
+  'in_review',
+  'approved',
+  'sent_back',
+  'admin_discarded',
+];
+
+const SUBMISSION_EDITABLE_STATUSES: readonly TaskStatus[] = [
+  'swf',
+  'swof',
+  'on_hold',
+  'in_studio',
+  'in_review',
+  'sent_back',
+];
 
 export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: Props) {
   const { user } = useAuthStore();
@@ -30,9 +71,13 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
   );
   const [submissionNotes, setSubmissionNotes] = useState(task.submission_notes || '');
   const [studioResult, setStudioResult] = useState(task.studio_result || '');
+  const [submissionChangedRemotely, setSubmissionChangedRemotely] = useState(false);
+  const submissionTaskIdRef = useRef(task.id);
+  const submissionBaseUpdatedRef = useRef(task.updated);
+  const submissionDirtyRef = useRef(false);
   const [paymentUsd, setPaymentUsd] = useState(task.payment_amount_usd || 0);
   const [saving, setSaving] = useState(false);
-  const [confirmingAction, setConfirmingAction] = useState<{ label: string; status: TaskStatus; color: string } | null>(null);
+  const [confirmingAction, setConfirmingAction] = useState<TaskAction | null>(null);
   const assignableMembers = members.filter(
     (member) => member.role === 'member' && member.is_active
   );
@@ -40,9 +85,20 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
     task.member_verdict === 'swf' || task.member_verdict === 'swof'
       ? task.member_verdict
       : null;
-  const hasSubmissionVerdict = submissionVerdict !== null;
   const canManageSubmission = isAdmin || isMyTask;
-  const canEditSubmission = hasSubmissionVerdict && canManageSubmission;
+  const hasSubmissionData = Boolean(
+    task.submission_prompt ||
+    task.submission_dsp ||
+    task.submission_final_answer ||
+    task.submission_notes ||
+    task.studio_result
+  );
+  const submissionStageVisible = SUBMISSION_VISIBLE_STATUSES.includes(task.status);
+  const showSubmissionFields =
+    canManageSubmission && (submissionStageVisible || hasSubmissionData);
+  const canEditSubmission =
+    canManageSubmission && SUBMISSION_EDITABLE_STATUSES.includes(task.status);
+  const submissionStatus = submissionVerdict || (submissionStageVisible ? task.status : null);
   const submissionDirty =
     submissionPrompt !== (task.submission_prompt || '') ||
     submissionDsp !== (task.submission_dsp || '') ||
@@ -55,13 +111,22 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
   }, [task.admin_notes, task.id]);
 
   useEffect(() => {
-    setSubmissionPrompt(task.submission_prompt || '');
-    setSubmissionDsp(task.submission_dsp || '');
-    setSubmissionFinalAnswer(task.submission_final_answer || '');
-    setSubmissionNotes(task.submission_notes || '');
-    setStudioResult(task.studio_result || '');
+    const taskChanged = submissionTaskIdRef.current !== task.id;
+    if (taskChanged || !submissionDirtyRef.current) {
+      setSubmissionPrompt(task.submission_prompt || '');
+      setSubmissionDsp(task.submission_dsp || '');
+      setSubmissionFinalAnswer(task.submission_final_answer || '');
+      setSubmissionNotes(task.submission_notes || '');
+      setStudioResult(task.studio_result || '');
+      submissionTaskIdRef.current = task.id;
+      submissionBaseUpdatedRef.current = task.updated;
+      setSubmissionChangedRemotely(false);
+    } else if (task.updated !== submissionBaseUpdatedRef.current) {
+      setSubmissionChangedRemotely(true);
+    }
   }, [
     task.id,
+    task.updated,
     task.submission_prompt,
     task.submission_dsp,
     task.submission_final_answer,
@@ -70,8 +135,30 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
   ]);
 
   useEffect(() => {
+    submissionDirtyRef.current = submissionDirty;
+  }, [submissionDirty]);
+
+  useEffect(() => {
     setPaymentUsd(task.payment_amount_usd || 0);
   }, [task.id, task.payment_amount_usd]);
+
+  const markSubmissionSynchronized = (updatedTask: Task) => {
+    submissionBaseUpdatedRef.current = updatedTask.updated;
+    submissionDirtyRef.current = false;
+    setSubmissionChangedRemotely(false);
+  };
+
+  const loadLatestSubmission = () => {
+    setSubmissionPrompt(task.submission_prompt || '');
+    setSubmissionDsp(task.submission_dsp || '');
+    setSubmissionFinalAnswer(task.submission_final_answer || '');
+    setSubmissionNotes(task.submission_notes || '');
+    setStudioResult(task.studio_result || '');
+    submissionBaseUpdatedRef.current = task.updated;
+    submissionDirtyRef.current = false;
+    setSubmissionChangedRemotely(false);
+    addToast(t('tasks.latest_submission_loaded'), 'success');
+  };
 
   // Close drawer on Escape key press
   useEffect(() => {
@@ -82,10 +169,14 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  const handleStatusChange = async (newStatus: TaskStatus, extraData?: Partial<Task>) => {
+  const handleStatusChange = async (
+    newStatus: TaskStatus,
+    extraData?: Partial<Task>,
+    feedback?: { success: string; error: string }
+  ) => {
     setSaving(true);
     try {
-      const data: Partial<Task> = { status: newStatus, ...extraData };
+      const data: Partial<Task> = { status: newStatus };
       if (['swf', 'swof', 'member_discarded'].includes(newStatus)) {
         data.member_verdict = newStatus as Task['member_verdict'];
         data.member_verdict_date = new Date().toISOString();
@@ -108,13 +199,29 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
       if (newStatus === 'approved') {
         data.payment_status = 'pending';
       }
+      if (canEditSubmission && submissionDirtyRef.current) {
+        Object.assign(data, {
+          submission_prompt: submissionPrompt,
+          submission_dsp: submissionDsp,
+          submission_final_answer: submissionFinalAnswer,
+          submission_notes: submissionNotes,
+          studio_result: studioResult,
+        });
+      }
+      Object.assign(data, extraData);
       const updated = await apiUpdateTask(task.id, data, {
         expectedStatus: task.status,
         expectedAssignee: isMember ? user?.id : undefined,
-        expectedUpdated: task.updated,
+        expectedUpdated: submissionDirtyRef.current
+          ? submissionBaseUpdatedRef.current
+          : task.updated,
       });
+      markSubmissionSynchronized(updated);
       updateTask(task.id, updated);
-      addToast(`Task status updated to ${newStatus.toUpperCase()}`, 'success');
+      addToast(
+        feedback?.success || `${t('tasks.status_updated')} ${t(`status.${newStatus}`)}`,
+        'success'
+      );
     } catch (error) {
       if (error instanceof TaskConflictError) {
         if (error.latestTask) {
@@ -125,7 +232,7 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
         }
         addToast(t('tasks.conflict'), 'warning');
       } else {
-        addToast('Failed to update task', 'error');
+        addToast(feedback?.error || t('tasks.status_update_error'), 'error');
       }
     } finally {
       setSaving(false);
@@ -150,9 +257,10 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
         {
           expectedStatus: task.status,
           expectedAssignee: task.assigned_to,
-          expectedUpdated: task.updated,
+          expectedUpdated: submissionBaseUpdatedRef.current,
         }
       );
+      markSubmissionSynchronized(updated);
       updateTask(task.id, updated);
       addToast(t('tasks.submission_saved'), 'success');
     } catch (error) {
@@ -169,6 +277,64 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const focusSubmissionNotes = () => {
+    window.requestAnimationFrame(() => {
+      const notesField = document.querySelector<HTMLTextAreaElement>(
+        '#task-submission-notes'
+      );
+      notesField?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      notesField?.focus();
+    });
+  };
+
+  const handleSubmitForReview = async () => {
+    if (!isAdmin || task.status !== 'in_studio' || saving) return;
+    if (!submissionNotes.trim()) {
+      setConfirmingAction(null);
+      addToast(t('tasks.review_note_required'), 'error');
+      focusSubmissionNotes();
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updated = await apiUpdateTask(
+        task.id,
+        {
+          status: 'in_review',
+          submission_prompt: submissionPrompt,
+          submission_dsp: submissionDsp,
+          submission_final_answer: submissionFinalAnswer,
+          submission_notes: submissionNotes,
+          studio_result: studioResult,
+        },
+        {
+          expectedStatus: 'in_studio',
+          expectedAssignee: task.assigned_to,
+          expectedUpdated: submissionBaseUpdatedRef.current,
+        }
+      );
+      markSubmissionSynchronized(updated);
+      updateTask(task.id, updated);
+      addToast(t('tasks.submitted_for_review'), 'success');
+    } catch (error) {
+      if (error instanceof TaskConflictError) {
+        if (error.latestTask) {
+          updateTask(task.id, error.latestTask);
+        } else if (error.latestTask === null) {
+          removeTask(task.id);
+          onClose();
+        }
+        addToast(t('tasks.conflict'), 'warning');
+      } else {
+        addToast(t('tasks.submit_for_review_error'), 'error');
+      }
+    } finally {
+      setSaving(false);
+      setConfirmingAction(null);
     }
   };
 
@@ -229,14 +395,32 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
   const handleRevertPayment = async () => {
     setSaving(true);
     try {
-      const updated = await apiUpdateTask(task.id, {
-        payment_status: 'pending',
-        payment_date: '',
-      } as Partial<Task>);
+      const updated = await apiUpdateTask(
+        task.id,
+        {
+          payment_status: 'pending',
+          payment_date: '',
+        } as Partial<Task>,
+        {
+          expectedStatus: task.status,
+          expectedAssignee: task.assigned_to,
+          expectedUpdated: task.updated,
+        }
+      );
       updateTask(task.id, updated);
-      addToast('Payment status reverted to Pending', 'success');
-    } catch {
-      addToast('Failed to revert payment', 'error');
+      addToast(t('payments.reverted_pending'), 'success');
+    } catch (error) {
+      if (error instanceof TaskConflictError) {
+        if (error.latestTask) {
+          updateTask(task.id, error.latestTask);
+        } else if (error.latestTask === null) {
+          removeTask(task.id);
+          onClose();
+        }
+        addToast(t('tasks.conflict'), 'warning');
+      } else {
+        addToast(t('payments.revert_error'), 'error');
+      }
     } finally {
       setSaving(false);
     }
@@ -277,18 +461,19 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
   const getStageIndex = (s: TaskStatus) => {
     if (s === 'assigned') return 1;
     if (s === 'working') return 2;
-    if (['swf', 'swof', 'member_discarded'].includes(s)) return 3;
-    if (['in_studio', 'in_review', 'on_hold'].includes(s)) return 4;
+    if (['swf', 'swof', 'member_discarded', 'on_hold'].includes(s)) return 3;
+    if (s === 'in_studio') return 4;
+    if (s === 'in_review') return 5;
     if (s === 'sent_back') return 2;
-    if (['approved', 'admin_discarded'].includes(s)) return 5;
+    if (['approved', 'admin_discarded'].includes(s)) return 6;
     return 1;
   };
 
   const currentStage = getStageIndex(task.status);
 
   // Available buttons
-  const memberActions: { label: string; status: TaskStatus; color: string }[] = [];
-  const adminActions: { label: string; status: TaskStatus; color: string }[] = [];
+  const memberActions: TaskAction[] = [];
+  const adminActions: TaskAction[] = [];
 
   if (isMember && isMyTask) {
     if (task.status === 'assigned') {
@@ -300,9 +485,6 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
         { label: t('tasks.set_swof'), status: 'swof', color: 'btn-secondary' },
         { label: t('tasks.discard'), status: 'member_discarded', color: 'btn-danger' }
       );
-    }
-    if (['swf', 'swof', 'member_discarded', 'sent_back'].includes(task.status)) {
-      memberActions.push({ label: t('tasks.resume'), status: 'working', color: 'btn-primary' });
     }
   }
 
@@ -317,7 +499,11 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
       adminActions.push({ label: t('tasks.claim_studio'), status: 'in_studio', color: 'btn-primary' });
     }
     if (task.status === 'in_studio') {
-      adminActions.push({ label: t('tasks.set_in_review'), status: 'in_review', color: 'btn-primary' });
+      adminActions.push({
+        label: t('tasks.submit_for_review'),
+        status: 'in_review',
+        color: 'btn-primary',
+      });
     }
     if (task.status === 'in_review') {
       adminActions.push(
@@ -327,6 +513,80 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
       );
     }
   }
+
+  // Status changes are intentionally limited to the adjacent workflow stage.
+  // This keeps verdict, Studio, Review, and payment invariants intact.
+  const submittedStatus =
+    MEMBER_VERDICTS.find((verdict) => verdict === task.member_verdict) || null;
+  let rollbackTarget: TaskStatus | null = null;
+  let rollbackExtraData: Partial<Task> | undefined;
+  let rollbackBlockedReason = '';
+
+  if (isAdmin) {
+    if (task.status === 'working') {
+      rollbackTarget = 'assigned';
+    } else if (MEMBER_VERDICTS.some((verdict) => verdict === task.status)) {
+      rollbackTarget = 'working';
+    } else if (task.status === 'on_hold' || task.status === 'in_studio') {
+      rollbackTarget = submittedStatus;
+      rollbackExtraData = submittedStatus
+        ? {
+            member_verdict: submittedStatus,
+            member_verdict_date: task.member_verdict_date,
+          }
+        : undefined;
+    } else if (task.status === 'in_review') {
+      rollbackTarget = 'in_studio';
+    } else if (task.status === 'approved') {
+      rollbackTarget = 'in_review';
+      rollbackExtraData = {
+        admin_verdict: '',
+        admin_verdict_date: '',
+        payment_status: 'not_applicable',
+        payment_date: '',
+      };
+      if (task.payment_status === 'paid') {
+        rollbackBlockedReason = t('tasks.revert_payment_blocked');
+      }
+    } else if (task.status === 'sent_back' || task.status === 'admin_discarded') {
+      rollbackTarget = 'in_review';
+      rollbackExtraData = {
+        admin_verdict: '',
+        admin_verdict_date: '',
+      };
+    }
+  } else if (isMember && isMyTask) {
+    if (task.status === 'working') {
+      rollbackTarget = 'assigned';
+    } else if (
+      MEMBER_VERDICTS.some((verdict) => verdict === task.status) ||
+      task.status === 'sent_back'
+    ) {
+      rollbackTarget = 'working';
+    }
+  }
+
+  if (rollbackTarget && canEditSubmission && submissionDirty) {
+    rollbackExtraData = {
+      ...rollbackExtraData,
+      submission_prompt: submissionPrompt,
+      submission_dsp: submissionDsp,
+      submission_final_answer: submissionFinalAnswer,
+      submission_notes: submissionNotes,
+      studio_result: studioResult,
+    };
+  }
+
+  const rollbackAction: TaskAction | null = rollbackTarget
+    ? {
+        label: `${t('tasks.revert_to')} ${t(`status.${rollbackTarget}`)}`,
+        status: rollbackTarget,
+        color: 'btn-secondary',
+        kind: 'revert',
+        extraData: rollbackExtraData,
+      }
+    : null;
+  const forwardActions: TaskAction[] = [...memberActions, ...adminActions];
 
   return (
     <div
@@ -366,15 +626,19 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
           </div>
           <ArrowRight className="stepper-arrow" size={12} />
           <div className={`stepper-step ${currentStage >= 3 ? (currentStage > 3 ? 'completed' : 'active') : ''}`}>
-            <span>{formatNumber(3, language)}. {t('tasks.verdict')}</span>
+            <span>{formatNumber(3, language)}. {t('tasks.submitted')}</span>
           </div>
           <ArrowRight className="stepper-arrow" size={12} />
           <div className={`stepper-step ${currentStage >= 4 ? (currentStage > 4 ? 'completed' : 'active') : ''}`}>
             <span>{formatNumber(4, language)}. {t('status.in_studio')}</span>
           </div>
           <ArrowRight className="stepper-arrow" size={12} />
-          <div className={`stepper-step ${currentStage >= 5 ? 'completed' : ''}`}>
-            <span>{formatNumber(5, language)}. {t('tasks.final')}</span>
+          <div className={`stepper-step ${currentStage >= 5 ? (currentStage > 5 ? 'completed' : 'active') : ''}`}>
+            <span>{formatNumber(5, language)}. {t('status.in_review')}</span>
+          </div>
+          <ArrowRight className="stepper-arrow" size={12} />
+          <div className={`stepper-step ${currentStage >= 6 ? 'completed' : ''}`}>
+            <span>{formatNumber(6, language)}. {t('tasks.final')}</span>
           </div>
         </div>
 
@@ -427,7 +691,7 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
         </div>
 
         {/* Collaborative Submission Details */}
-        {canManageSubmission && !hasSubmissionVerdict && (
+        {canManageSubmission && !showSubmissionFields && (
           <div className="task-submission-locked" role="note">
             <AlertCircle size={18} aria-hidden="true" />
             <div>
@@ -437,15 +701,52 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
           </div>
         )}
 
-        {canManageSubmission && submissionVerdict && (
+        {showSubmissionFields && (
           <section className="task-submission-section" aria-labelledby="task-submission-title">
             <div className="task-submission-header">
               <div>
                 <h3 id="task-submission-title">{t('tasks.submission_details')}</h3>
                 <p>{t('tasks.submission_help')}</p>
               </div>
-              <StatusBadge status={submissionVerdict} />
+              {submissionStatus ? <StatusBadge status={submissionStatus} /> : null}
             </div>
+
+            {task.status === 'in_studio' ? (
+              <div className="task-studio-workflow" role="note">
+                <AlertCircle size={19} aria-hidden="true" />
+                <div>
+                  <strong>{t('tasks.studio_workflow_title')}</strong>
+                  <span>
+                    {isAdmin
+                      ? t('tasks.studio_workflow_admin_help')
+                      : t('tasks.studio_workflow_member_help')}
+                  </span>
+                </div>
+              </div>
+            ) : null}
+
+            {submissionChangedRemotely ? (
+              <div className="task-submission-conflict" role="alert">
+                <AlertCircle size={19} aria-hidden="true" />
+                <div>
+                  <strong>{t('tasks.submission_changed_remote_title')}</strong>
+                  <span>{t('tasks.submission_changed_remote_help')}</span>
+                </div>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={loadLatestSubmission}
+                  disabled={saving}
+                >
+                  {t('tasks.load_latest')}
+                </button>
+              </div>
+            ) : null}
+
+            {!canEditSubmission ? (
+              <div className="task-submission-readonly" role="note">
+                {t('tasks.submission_readonly')}
+              </div>
+            ) : null}
 
             <div className="task-submission-grid">
               <label className="task-submission-field">
@@ -488,14 +789,21 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
               </label>
 
               <label className="task-submission-field">
-                <span>{t('tasks.submission_notes')}</span>
+                <span>
+                  {task.status === 'in_studio'
+                    ? t('tasks.submission_notes_required')
+                    : t('tasks.submission_notes')}
+                </span>
                 <textarea
+                  id="task-submission-notes"
                   className="form-textarea task-submission-textarea"
                   value={submissionNotes}
                   onChange={(event) => setSubmissionNotes(event.target.value)}
                   placeholder={t('tasks.submission_notes_placeholder')}
                   rows={5}
                   dir="auto"
+                  required={task.status === 'in_studio'}
+                  aria-required={task.status === 'in_studio'}
                   disabled={!canEditSubmission || saving}
                 />
               </label>
@@ -515,16 +823,20 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
               />
             </label>
 
-            <div className="task-submission-actions">
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={handleSaveSubmission}
-                disabled={saving || !canEditSubmission || !submissionDirty}
-              >
-                <Save size={14} aria-hidden="true" />
-                {t('common.save')}
-              </button>
-            </div>
+            {canEditSubmission ? (
+              <div className="task-submission-actions">
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleSaveSubmission}
+                  disabled={saving || !submissionDirty}
+                >
+                  <Save size={14} aria-hidden="true" />
+                  {task.status === 'in_studio'
+                    ? t('tasks.save_draft')
+                    : t('common.save')}
+                </button>
+              </div>
+            ) : null}
           </section>
         )}
 
@@ -537,7 +849,7 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
                 className="form-textarea"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add private admin notes..."
+                placeholder={t('tasks.private_admin_notes_placeholder')}
                 rows={3}
                 style={{ minHeight: '80px' }}
               />
@@ -607,7 +919,7 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
                     disabled={saving}
                     style={{ width: '100%', color: 'var(--color-warning)' }}
                   >
-                    Revert to Pending Payment
+                    {t('payments.revert_pending')}
                   </button>
                 </div>
               )}
@@ -645,15 +957,48 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
           <div className="modal" role="dialog" aria-modal="true" style={{ zIndex: 310 }}>
             <div className="modal-header">
               <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <AlertCircle size={20} style={{ color: 'var(--color-primary)' }} />
-                Confirm Action: {confirmingAction.label}
+                {confirmingAction.kind === 'revert' ? (
+                  <RotateCcw size={20} style={{ color: 'var(--color-warning)' }} />
+                ) : (
+                  <AlertCircle size={20} style={{ color: 'var(--color-primary)' }} />
+                )}
+                {confirmingAction.kind === 'revert'
+                  ? t('tasks.confirm_revert_title')
+                  : confirmingAction.label}
               </h3>
-              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setConfirmingAction(null)}>✕</button>
+              <button
+                className="btn btn-ghost btn-icon btn-sm"
+                onClick={() => setConfirmingAction(null)}
+                aria-label={t('common.close')}
+              >
+                ✕
+              </button>
             </div>
             <div className="modal-body">
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
-                Are you sure you want to update task <strong className="input-mono">{task.task_id}</strong> to status: <strong>{confirmingAction.label}</strong>?
-              </p>
+              {confirmingAction.kind === 'revert' ? (
+                <>
+                  <p className="task-revert-confirm-copy">
+                    {t('tasks.revert_confirm')}
+                  </p>
+                  <div className="task-status-transition" aria-label={t('tasks.status_change')}>
+                    <StatusBadge status={task.status} />
+                    <ArrowRight size={16} aria-hidden="true" />
+                    <StatusBadge status={confirmingAction.status} />
+                  </div>
+                </>
+              ) : (
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
+                  {confirmingAction.status === 'in_review' && task.status === 'in_studio'
+                    ? t('tasks.submit_for_review_confirm')
+                    : (
+                    <>
+                      Are you sure you want to update task{' '}
+                      <strong className="input-mono">{task.task_id}</strong> to status:{' '}
+                      <strong>{confirmingAction.label}</strong>?
+                    </>
+                  )}
+                </p>
+              )}
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setConfirmingAction(null)}>
@@ -661,31 +1006,83 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
               </button>
               <button
                 className={`btn ${confirmingAction.color}`}
-                onClick={() => handleStatusChange(confirmingAction.status)}
+                onClick={() =>
+                  confirmingAction.kind === 'revert'
+                    ? void handleStatusChange(
+                        confirmingAction.status,
+                        confirmingAction.extraData,
+                        {
+                          success: `${t('tasks.reverted_to')} ${t(
+                            `status.${confirmingAction.status}`
+                          )}`,
+                          error: t('tasks.revert_error'),
+                        }
+                      )
+                    : confirmingAction.status === 'in_review' && task.status === 'in_studio'
+                    ? void handleSubmitForReview()
+                    : void handleStatusChange(confirmingAction.status)
+                }
                 disabled={saving}
               >
-                Confirm {confirmingAction.label}
+                {confirmingAction.kind === 'revert'
+                  ? t('tasks.confirm_revert')
+                  : `${t('common.confirm')} ${confirmingAction.label}`}
               </button>
             </div>
           </div>
         </>
       )}
 
-      {/* Primary Action Controls */}
-      {(memberActions.length > 0 || adminActions.length > 0) && (
+      {/* Reversible, adjacent workflow controls */}
+      {(rollbackAction || forwardActions.length > 0) && (
         <div className="task-detail-actions">
-          {[...memberActions, ...adminActions].map((action) => (
-            <button
-              key={action.status}
-              className={`btn ${action.color} btn-sm`}
-              onClick={() => setConfirmingAction(action)}
-              disabled={saving}
-              style={{ flex: 1 }}
-            >
-              <span aria-hidden="true">{STATUS_CONFIG[action.status].icon}</span>
-              {action.label}
-            </button>
-          ))}
+          {rollbackAction ? (
+            <div className="task-action-group task-action-group-previous">
+              <span className="task-action-group-label">{t('tasks.previous_step')}</span>
+              <button
+                className={`btn ${rollbackAction.color} btn-sm`}
+                onClick={() => setConfirmingAction(rollbackAction)}
+                disabled={saving || Boolean(rollbackBlockedReason)}
+                title={rollbackBlockedReason || t('tasks.revert_help')}
+              >
+                <RotateCcw size={15} aria-hidden="true" />
+                {rollbackAction.label}
+              </button>
+              {rollbackBlockedReason ? (
+                <span className="task-action-blocked" role="note">
+                  {rollbackBlockedReason}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+
+          {forwardActions.length > 0 ? (
+            <div className="task-action-group task-action-group-next">
+              <span className="task-action-group-label">{t('tasks.next_step')}</span>
+              {forwardActions.map((action) => (
+                <button
+                  key={action.status}
+                  className={`btn ${action.color} btn-sm`}
+                  onClick={() => {
+                    if (
+                      action.status === 'in_review' &&
+                      task.status === 'in_studio' &&
+                      !submissionNotes.trim()
+                    ) {
+                      addToast(t('tasks.review_note_required'), 'error');
+                      focusSubmissionNotes();
+                      return;
+                    }
+                    setConfirmingAction(action);
+                  }}
+                  disabled={saving}
+                >
+                  <span aria-hidden="true">{STATUS_CONFIG[action.status].icon}</span>
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       )}
     </div>
