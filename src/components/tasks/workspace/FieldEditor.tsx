@@ -1,6 +1,5 @@
 import { useId, type ReactNode } from 'react';
 import CopyButton from '../../shared/CopyButton';
-import AiPolishButton from './AiPolishButton';
 import { useLanguageStore } from '../../../store';
 
 interface Props {
@@ -17,8 +16,6 @@ interface Props {
   tone?: 'default' | 'studio';
   /** Extra controls beside the copy button. */
   actions?: ReactNode;
-  /** Offers the "polish to English" assist under the field when AI is set up. */
-  aiAssist?: boolean;
   id?: string;
 }
 
@@ -39,7 +36,6 @@ export default function FieldEditor({
   rows = 5,
   tone = 'default',
   actions,
-  aiAssist = false,
   id,
 }: Props) {
   const { t } = useLanguageStore();
@@ -85,11 +81,6 @@ export default function FieldEditor({
         aria-describedby={help ? helpId : undefined}
       />
 
-      {aiAssist && !readOnly && !disabled && (
-        <div className="field-editor-footer">
-          <AiPolishButton value={value} onAccept={onChange} disabled={disabled} />
-        </div>
-      )}
     </div>
   );
 }

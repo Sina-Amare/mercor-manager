@@ -68,8 +68,8 @@ without server-side rewrites.
 
 - `src/workflow.ts` — the transition table, effects, stages and editing rights.
   Everything the UI offers is derived from here.
-- `src/api` — Supabase access, auth, the `admin-users` and `ai` function
-  clients, and the Realtime subscriptions.
+- `src/api` — Supabase access, auth, the `admin-users` client, and the
+  Realtime subscriptions.
 - `src/store` — Zustand session, language, task, member and UI state.
 - `src/components/tasks/workspace` — the task screen: pinned task context beside
   Submission / Studio / Review / Payment stage tabs, plus the history feed.
@@ -77,7 +77,7 @@ without server-side rewrites.
   with focus trapping and optional type-to-confirm.
 - `src/i18n` — English and Persian, kept at exact key parity.
 - `supabase/migrations` — schema, RLS, the workflow guardrail trigger, audit.
-- `supabase/functions` — `admin-users` (user provisioning) and `ai`.
+- `supabase/functions` — `admin-users`, the only path that writes to users.
 
 Routes and larger pages are lazy-loaded. Supabase is the only source of truth;
 a failed write raises an error rather than being reported as saved.
@@ -94,9 +94,3 @@ and a mandatory credential rotation — see
 [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md) and
 [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md).
 
-## AI assistance
-
-Optional and off by default. Three features: rewrite a submission field into
-English, an advisory pre-submit check before a task leaves Studio, and prompt
-search by meaning. The key lives in an Edge Function, never in the bundle; with
-no key configured every AI control is invisible. See [docs/AI.md](docs/AI.md).

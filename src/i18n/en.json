@@ -466,24 +466,5 @@
     "notifications": "Notifications",
     "dismiss": "Dismiss",
     "logout_unsaved": "You have unsaved task drafts on this device. Signing out leaves them here — they have not been shared with the team."
-  },
-  "ai": {
-    "polish": "To English",
-    "polish_help": "Rewrite this field as clear English. You review it before it is used.",
-    "suggestion": "Suggested rewrite",
-    "review_before_use": "Read it before you use it.",
-    "use_this": "Use this",
-    "discard": "Discard",
-    "no_change": "Already reads well — no change suggested",
-    "failed": "AI assistance is unavailable right now",
-    "check_submission": "Check before review",
-    "check_help": "A quick look for blank fields and answers that miss the prompt.",
-    "check_clear": "Nothing obvious to fix",
-    "advisory_only": "Advisory only — you decide whether to send it.",
-    "semantic_results": "Closest matches by meaning",
-    "field_prompt": "Prompt",
-    "field_dsp": "DSP",
-    "field_final_answer": "Final answer",
-    "field_notes": "Notes"
   }
 }

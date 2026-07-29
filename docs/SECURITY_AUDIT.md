@@ -20,8 +20,8 @@ task. The role checks in React were interface conveniences, not authorization.
 - **No credentials in source.** `src/api/supabase.ts` throws at boot when the
   environment variables are missing rather than falling back to a baked-in
   project.
-- **Row level security** on `users`, `tasks`, `settings`, `prompts`,
-  `task_events` and `ai_usage`. Members select and update only their own tasks.
+- **Row level security** on `users`, `tasks`, `settings`, `prompts` and
+  `task_events`. Members select and update only their own tasks.
   Only admins insert tasks or write settings. Nobody deletes tasks — removal is
   soft, through `deleted_at`.
 - **Column-level grants on `users`.** `password` is not in the readable list,
@@ -35,8 +35,6 @@ task. The role checks in React were interface conveniences, not authorization.
   removing members runs in the `admin-users` Edge Function under the service
   role, after verifying the caller is an active admin. The browser can no longer
   grant itself a role.
-- **No LLM key in the bundle.** AI calls go through the `ai` Edge Function,
-  which verifies the caller's JWT and enforces a per-user daily quota.
 - **An audit trail.** `task_events` records actor, timestamp, status transition
   and changed fields for every task write.
 - **Deactivation preferred over deletion.** Removing a member is still possible
@@ -76,7 +74,7 @@ supabase.from('prompts').select('*')
 - Personal prompts are scoped by policy, but any admin can read them. They are
   private from peers, not from administration.
 - The `admin-users` backfill endpoint is gated by a shared secret rather than a
-  session. Unset `MIGRATION_SECRET` once the migration is complete.
+  session. `MIGRATION_SECRET` is unset, so that path is closed.
 - Backup export produces a plaintext JSON file containing all task bodies and
   submissions. Treat the downloaded file as sensitive.
 

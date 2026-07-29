@@ -85,7 +85,6 @@ export default function SubmissionPanel({
           onChange={(value) => setField('submission_prompt', value)}
           placeholder={t('tasks.submission_prompt_placeholder')}
           readOnly={!canEdit}
-          aiAssist
         />
         <FieldEditor
           id="task-submission-dsp"
@@ -94,7 +93,6 @@ export default function SubmissionPanel({
           onChange={(value) => setField('submission_dsp', value)}
           placeholder={t('tasks.submission_dsp_placeholder')}
           readOnly={!canEdit}
-          aiAssist
         />
         <FieldEditor
           id="task-submission-final-answer"
@@ -103,7 +101,6 @@ export default function SubmissionPanel({
           onChange={(value) => setField('submission_final_answer', value)}
           placeholder={t('tasks.submission_final_answer_placeholder')}
           readOnly={!canEdit}
-          aiAssist
         />
         <FieldEditor
           id="task-submission-notes"
@@ -113,7 +110,6 @@ export default function SubmissionPanel({
           placeholder={t('tasks.submission_notes_placeholder')}
           help={t('tasks.submission_notes_help')}
           readOnly={!canEdit}
-          aiAssist
         />
       </div>
 

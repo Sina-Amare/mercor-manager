@@ -18,7 +18,6 @@ Apply in filename order through the SQL editor.
 | `20260730_auth_link_and_guardrails.sql` | `auth_user_id` link, identity helpers, transition table, audit trail | **yes — purely additive** |
 | `20260731_enable_rls.sql` | Ends anonymous access, enables RLS, turns on the guardrail trigger | **no — this is the cutover** |
 | `20260732_drop_legacy_passwords.sql` | Drops the browser-readable password column | after everyone has signed in |
-| `20260733_ai_usage.sql` | Per-user daily AI counter | optional, with `docs/AI.md` |
 
 ## The authentication cutover
 

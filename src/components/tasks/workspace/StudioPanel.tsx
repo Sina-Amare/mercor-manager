@@ -2,7 +2,6 @@ import { AlertCircle, Save } from 'lucide-react';
 import type { Task } from '../../../types';
 import { useLanguageStore } from '../../../store';
 import FieldEditor from './FieldEditor';
-import AiSubmissionCheck from './AiSubmissionCheck';
 import type { Draft, DraftField } from './useTaskDraft';
 
 interface Props {
@@ -70,7 +69,6 @@ export default function StudioPanel({
         onChange={(value) => setField('studio_result', value)}
         placeholder={t('tasks.studio_result_placeholder')}
         readOnly={!canEdit}
-        aiAssist
         tone="studio"
         rows={6}
       />
@@ -87,13 +85,9 @@ export default function StudioPanel({
         help={inStudio ? t('tasks.review_note_help') : undefined}
         required={inStudio}
         readOnly={!canEdit}
-        aiAssist
         rows={6}
       />
 
-      {/* Offered at the point of no return — the last screen before the task
-          goes to Review — where a missed blank field costs a round trip. */}
-      {inStudio && isAdmin && <AiSubmissionCheck draft={draft} disabled={saving} />}
 
       {canEdit && (
         <div className="stage-panel-actions">
