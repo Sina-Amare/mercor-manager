@@ -8,7 +8,7 @@ import { formatNumber } from '../utils/dates';
 export default function Settings() {
   const { t, language } = useLanguageStore();
   const { user: currentUser, updateUser: updateCurrentUser } = useAuthStore();
-  const { members, settings, setSettings, addMember, updateMember, removeMember, tasks, setTasks, setMembers } = useAppStore();
+  const { members, settings, setSettings, addMember, updateMember, removeMember, tasks, setTasks, setTrashedTasks, setMembers } = useAppStore();
   const { addToast } = useToastStore();
 
   // Conversion rate
@@ -162,6 +162,7 @@ export default function Settings() {
         const content = event.target?.result as string;
         const result = await importLocalBackup(content);
         setTasks(result.tasks);
+        setTrashedTasks(result.trashedTasks);
         setMembers(result.users);
         setSettings(result.settings);
         addToast('Database imported and synced successfully!', 'success');

@@ -72,6 +72,8 @@ export interface Task {
   payment_status: PaymentStatus;
   payment_amount_usd: number;
   payment_date: string;
+  deleted_at: string | null;
+  deleted_by: string | null;
   created: string;
   updated: string;
   // Expanded relation

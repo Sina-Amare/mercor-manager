@@ -15,6 +15,7 @@ import {
   ChevronRight,
   AlertCircle,
   MessageSquareText,
+  Trash2,
 } from 'lucide-react';
 import { useAuthStore, useLanguageStore, useAppStore } from '../../store';
 import { logout } from '../../api/auth';
@@ -25,7 +26,7 @@ import { MEMBER_ACTIVE_STATUSES } from '../../types';
 export default function Sidebar() {
   const { user } = useAuthStore();
   const { t, language } = useLanguageStore();
-  const { sidebarOpen, setSidebarOpen, members, tasks } = useAppStore();
+  const { sidebarOpen, setSidebarOpen, members, tasks, trashedTasks } = useAppStore();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
   const teamMembers = members.filter((member) => member.role === 'member' && member.is_active);
@@ -193,6 +194,18 @@ export default function Sidebar() {
                   <NavLink to="/settings" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                     <Settings size={18} className="sidebar-link-icon" />
                     {t('nav.settings')}
+                  </NavLink>
+                </li>
+                <li>
+                  <NavLink
+                    to="/recycle-bin"
+                    className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+                  >
+                    <Trash2 size={18} className="sidebar-link-icon" />
+                    {t('nav.recycle_bin')}
+                    <span className="sidebar-link-badge">
+                      {formatNumber(trashedTasks.length, language)}
+                    </span>
                   </NavLink>
                 </li>
               </ul>

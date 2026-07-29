@@ -5,7 +5,11 @@ import { TASK_STATUSES, STATUS_CONFIG } from '../../types';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../../store';
 import StatusBadge from '../shared/StatusBadge';
 import DateDisplay from '../shared/DateDisplay';
-import { deleteTask, deleteTasks, updateTasks as apiUpdateTasks } from '../../api/tasks';
+import {
+  moveTaskToTrash,
+  moveTasksToTrash,
+  updateTasks as apiUpdateTasks,
+} from '../../api/tasks';
 import { formatCurrency, formatNumber, usdToIrr } from '../../utils/dates';
 import { useNavigate } from 'react-router-dom';
 
@@ -30,7 +34,7 @@ export default function TaskTable({
 }: Props) {
   const { user } = useAuthStore();
   const { t, language } = useLanguageStore();
-  const { selectedTaskIds, toggleTaskSelection, selectAllTasks, clearSelection, removeTask, removeTasks, members, settings, updateTask } = useAppStore();
+  const { selectedTaskIds, toggleTaskSelection, selectAllTasks, clearSelection, removeTask, removeTasks, addTrashedTask, members, settings, updateTask } = useAppStore();
   const { addToast } = useToastStore();
   const isAdmin = user?.role === 'admin';
   const navigate = useNavigate();
@@ -129,14 +133,18 @@ export default function TaskTable({
   const [reassigning, setReassigning] = useState(false);
 
   const confirmDeleteTask = async () => {
-    if (!deletingTask || deleting) return;
+    if (!deletingTask || deleting || !user) return;
     setDeleting(true);
     try {
-      await deleteTask(deletingTask.id);
+      const recycled = await moveTaskToTrash(deletingTask.id, user.id);
+      addTrashedTask(recycled);
       removeTask(deletingTask.id);
-      addToast(`Task ${deletingTask.task_id} deleted successfully`, 'success');
-    } catch {
-      addToast('Failed to delete task', 'error');
+      addToast(`${t('tasks.recycled')} ${deletingTask.task_id}`, 'success');
+    } catch (error) {
+      addToast(
+        error instanceof Error ? error.message : t('tasks.recycle_error'),
+        'error'
+      );
     } finally {
       setDeleting(false);
       setDeletingTask(null);
@@ -145,15 +153,22 @@ export default function TaskTable({
 
   const confirmBulkDelete = async () => {
     const idsToDelete = [...activeSelectedTaskIds];
-    if (idsToDelete.length === 0 || deleting) return;
+    if (idsToDelete.length === 0 || deleting || !user) return;
     setDeleting(true);
     try {
-      await deleteTasks(idsToDelete);
+      const recycledTasks = await moveTasksToTrash(idsToDelete, user.id);
+      recycledTasks.forEach(addTrashedTask);
       removeTasks(idsToDelete);
-      addToast(`${idsToDelete.length} tasks deleted successfully`, 'success');
+      addToast(
+        `${formatNumber(recycledTasks.length, language)} ${t('tasks.bulk_recycled')}`,
+        'success'
+      );
       clearSelection();
-    } catch {
-      addToast('Failed to delete tasks', 'error');
+    } catch (error) {
+      addToast(
+        error instanceof Error ? error.message : t('tasks.recycle_error'),
+        'error'
+      );
     } finally {
       setDeleting(false);
       setShowBulkDeleteModal(false);
@@ -358,7 +373,7 @@ export default function TaskTable({
                         {isAdmin && (
                           <button
                             className="btn btn-ghost btn-icon btn-sm"
-                            title={t('tasks.delete')}
+                            title={t('tasks.move_to_recycle_bin')}
                             onClick={() => setDeletingTask(task)}
                             style={{ color: 'var(--color-danger)' }}
                           >
@@ -383,7 +398,7 @@ export default function TaskTable({
           </span>
           <button className="btn btn-danger btn-sm" onClick={() => setShowBulkDeleteModal(true)}>
             <Trash2 size={14} />
-            {t('tasks.bulk_delete')}
+            {t('tasks.move_to_recycle_bin')}
           </button>
           <button
             className="btn btn-secondary btn-sm"
@@ -404,21 +419,27 @@ export default function TaskTable({
         </div>
       )}
 
-      {/* Single Task Delete Confirmation Modal */}
+      {/* Single Task Recycle Confirmation Modal */}
       {deletingTask && (
         <>
           <div className="modal-backdrop" onClick={() => setDeletingTask(null)} />
           <div className="modal" role="dialog" aria-modal="true">
             <div className="modal-header">
-              <h3 className="modal-title" style={{ color: 'var(--color-danger)' }}>Delete Task {deletingTask.task_id}?</h3>
-              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setDeletingTask(null)}>✕</button>
+              <h3 className="modal-title">{t('tasks.recycle_confirm_title')}</h3>
+              <button
+                className="btn btn-ghost btn-icon btn-sm"
+                onClick={() => setDeletingTask(null)}
+                aria-label={t('common.close')}
+              >
+                ✕
+              </button>
             </div>
             <div className="modal-body">
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
-                Are you sure you want to delete task <strong>{deletingTask.task_id}</strong>?
+                {t('tasks.recycle_confirm')} <strong>{deletingTask.task_id}</strong>?
               </p>
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-2)' }}>
-                This action cannot be undone.
+                {t('tasks.recycle_help')}
               </p>
             </div>
             <div className="modal-footer">
@@ -427,28 +448,35 @@ export default function TaskTable({
               </button>
               <button className="btn btn-danger" onClick={confirmDeleteTask} disabled={deleting}>
                 <Trash2 size={16} />
-                Delete Task
+                {t('tasks.move_to_recycle_bin')}
               </button>
             </div>
           </div>
         </>
       )}
 
-      {/* Bulk Delete Confirmation Modal */}
+      {/* Bulk Recycle Confirmation Modal */}
       {showBulkDeleteModal && (
         <>
           <div className="modal-backdrop" onClick={() => setShowBulkDeleteModal(false)} />
           <div className="modal" role="dialog" aria-modal="true">
             <div className="modal-header">
-              <h3 className="modal-title" style={{ color: 'var(--color-danger)' }}>Delete {activeSelectedTaskIds.length} Tasks?</h3>
-              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowBulkDeleteModal(false)}>✕</button>
+              <h3 className="modal-title">{t('tasks.bulk_recycle_confirm_title')}</h3>
+              <button
+                className="btn btn-ghost btn-icon btn-sm"
+                onClick={() => setShowBulkDeleteModal(false)}
+                aria-label={t('common.close')}
+              >
+                ✕
+              </button>
             </div>
             <div className="modal-body">
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)' }}>
-                Are you sure you want to permanently delete <strong>{activeSelectedTaskIds.length} selected tasks</strong>?
+                {t('tasks.bulk_recycle_confirm')}{' '}
+                <strong>{formatNumber(activeSelectedTaskIds.length, language)}</strong>?
               </p>
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-2)' }}>
-                This action cannot be undone.
+                {t('tasks.recycle_help')}
               </p>
             </div>
             <div className="modal-footer">
@@ -457,7 +485,7 @@ export default function TaskTable({
               </button>
               <button className="btn btn-danger" onClick={confirmBulkDelete} disabled={deleting}>
                 <Trash2 size={16} />
-                Delete {activeSelectedTaskIds.length} Tasks
+                {t('tasks.move_to_recycle_bin')} ({formatNumber(activeSelectedTaskIds.length, language)})
               </button>
             </div>
           </div>

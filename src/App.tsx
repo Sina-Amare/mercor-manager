@@ -4,6 +4,7 @@ import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from './st
 import { restoreSession } from './api/auth';
 import {
   fetchTasks,
+  fetchDeletedTasks,
   fetchAllUsers,
   fetchSettings,
   subscribeToTasks,
@@ -23,6 +24,7 @@ const Payments = lazy(() => import('./pages/Payments'));
 const Settings = lazy(() => import('./pages/Settings'));
 const TaskWorkspace = lazy(() => import('./pages/TaskWorkspace'));
 const Prompts = lazy(() => import('./pages/Prompts'));
+const RecycleBin = lazy(() => import('./pages/RecycleBin'));
 
 function LoadingScreen() {
   return (
@@ -49,10 +51,13 @@ function AppContent() {
   const { language } = useLanguageStore();
   const {
     setTasks,
+    setTrashedTasks,
     setMembers,
     setSettings,
     addTask,
     removeTask,
+    addTrashedTask,
+    removeTrashedTask,
     addMember,
     updateMember,
     removeMember,
@@ -78,13 +83,14 @@ function AppContent() {
     let active = true;
     const loadData = async () => {
       try {
-        const [tasks, users, settings] = await Promise.all([
+        const sessionUser = useAuthStore.getState().user;
+        const [tasks, trashedTasks, users, settings] = await Promise.all([
           fetchTasks(),
+          sessionUser?.role === 'admin' ? fetchDeletedTasks() : Promise.resolve([]),
           fetchAllUsers(),
           fetchSettings(),
         ]);
         if (!active) return;
-        const sessionUser = useAuthStore.getState().user;
         const freshUser = users.find((candidate) => candidate.id === sessionUser?.id);
         if (!freshUser || !freshUser.is_active) {
           useAuthStore.getState().logout();
@@ -93,6 +99,7 @@ function AppContent() {
         }
         useAuthStore.getState().updateUser(freshUser);
         setTasks(tasks);
+        setTrashedTasks(trashedTasks);
         setMembers(users);
         setSettings(settings);
       } catch (err) {
@@ -105,7 +112,14 @@ function AppContent() {
     return () => {
       active = false;
     };
-  }, [addToast, isAuthenticated, setTasks, setMembers, setSettings]);
+  }, [
+    addToast,
+    isAuthenticated,
+    setMembers,
+    setSettings,
+    setTasks,
+    setTrashedTasks,
+  ]);
 
   // Keep signed-in browsers synchronized with inserts, updates, and deletes.
   useEffect(() => {
@@ -125,9 +139,16 @@ function AppContent() {
       refreshInFlight = true;
       const revisionAtStart = realtimeRevision;
       try {
-        const tasks = await fetchTasks();
+        const shouldLoadTrash = useAuthStore.getState().user?.role === 'admin';
+        const [tasks, trashedTasks] = await Promise.all([
+          fetchTasks(),
+          shouldLoadTrash ? fetchDeletedTasks() : Promise.resolve([]),
+        ]);
         // Do not overwrite a newer websocket event with an older request snapshot.
-        if (active && revisionAtStart === realtimeRevision) setTasks(tasks);
+        if (active && revisionAtStart === realtimeRevision) {
+          setTasks(tasks);
+          setTrashedTasks(trashedTasks);
+        }
       } catch (error) {
         console.error('Failed to synchronize tasks:', error);
       } finally {
@@ -147,12 +168,23 @@ function AppContent() {
           const deletedId = oldTask?.id;
           if (deletedId) {
             removeTask(deletedId);
+            removeTrashedTask(deletedId);
           } else {
             void refreshTasks();
           }
           return;
         }
-        if (newTask) addTask(newTask);
+        if (newTask?.deleted_at) {
+          removeTask(newTask.id);
+          if (useAuthStore.getState().user?.role === 'admin') {
+            addTrashedTask(newTask);
+          } else {
+            removeTrashedTask(newTask.id);
+          }
+        } else if (newTask) {
+          removeTrashedTask(newTask.id);
+          addTask(newTask);
+        }
       },
       (status) => {
         if (status === 'SUBSCRIBED') {
@@ -185,7 +217,15 @@ function AppContent() {
       document.removeEventListener('visibilitychange', handleVisibility);
       unsubscribe();
     };
-  }, [addTask, isAuthenticated, removeTask, setTasks]);
+  }, [
+    addTask,
+    addTrashedTask,
+    isAuthenticated,
+    removeTask,
+    removeTrashedTask,
+    setTasks,
+    setTrashedTasks,
+  ]);
 
   // Keep users and shared settings synchronized across browsers and devices.
   useEffect(() => {
@@ -381,6 +421,7 @@ function AppContent() {
           <Route path="/tasks" element={<AdminRoute><AllTasks /></AdminRoute>} />
           <Route path="/member/:memberId" element={<AdminRoute><MemberView /></AdminRoute>} />
           <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
+          <Route path="/recycle-bin" element={<AdminRoute><RecycleBin /></AdminRoute>} />
 
           {/* Shared Routes */}
           <Route path="/status/:status" element={<StatusView />} />

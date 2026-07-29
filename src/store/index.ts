@@ -92,6 +92,7 @@ export const useAuthStore = create<AuthState>()(
 interface AppState {
   // Data
   tasks: Task[];
+  trashedTasks: Task[];
   members: User[];
   settings: AppSettings;
 
@@ -105,6 +106,9 @@ interface AppState {
   updateTask: (id: string, updates: Partial<Task>) => void;
   removeTask: (id: string) => void;
   removeTasks: (ids: string[]) => void;
+  setTrashedTasks: (tasks: Task[]) => void;
+  addTrashedTask: (task: Task) => void;
+  removeTrashedTask: (id: string) => void;
   
   setMembers: (members: User[]) => void;
   addMember: (member: User) => void;
@@ -134,6 +138,7 @@ const defaultSettings: AppSettings = {
 
 export const useAppStore = create<AppState>()((set, get) => ({
   tasks: [],
+  trashedTasks: [],
   members: [],
   settings: defaultSettings,
   selectedTaskIds: [],
@@ -142,7 +147,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
   setTasks: (tasks) =>
     set((s) => {
       const unique = tasks.filter(
-        (task, index, all) => all.findIndex((item) => item.id === task.id) === index
+        (task, index, all) =>
+          !task.deleted_at && all.findIndex((item) => item.id === task.id) === index
       );
       return {
         tasks: unique.map((task) => ({
@@ -191,6 +197,41 @@ export const useAppStore = create<AppState>()((set, get) => ({
       tasks: s.tasks.filter((t) => !ids.includes(t.id)),
       selectedTaskIds: [],
     })),
+  setTrashedTasks: (tasks) =>
+    set((state) => {
+      const unique = tasks.filter(
+        (task, index, all) =>
+          Boolean(task.deleted_at) &&
+          all.findIndex((item) => item.id === task.id) === index
+      );
+      return {
+        trashedTasks: unique.map((task) => ({
+          ...task,
+          expand: task.expand || {
+            assigned_to: state.members.find((member) => member.id === task.assigned_to),
+          },
+        })),
+      };
+    }),
+  addTrashedTask: (task) =>
+    set((state) => {
+      const expandedTask = {
+        ...task,
+        expand: task.expand || {
+          assigned_to: state.members.find((member) => member.id === task.assigned_to),
+        },
+      };
+      return {
+        trashedTasks: [
+          expandedTask,
+          ...state.trashedTasks.filter((item) => item.id !== task.id),
+        ],
+      };
+    }),
+  removeTrashedTask: (id) =>
+    set((state) => ({
+      trashedTasks: state.trashedTasks.filter((task) => task.id !== id),
+    })),
 
   setMembers: (members) => {
     // Unique by id and username
@@ -200,6 +241,12 @@ export const useAppStore = create<AppState>()((set, get) => ({
     set((state) => ({
       members: unique,
       tasks: state.tasks.map((task) => ({
+        ...task,
+        expand: {
+          assigned_to: unique.find((member) => member.id === task.assigned_to),
+        },
+      })),
+      trashedTasks: state.trashedTasks.map((task) => ({
         ...task,
         expand: {
           assigned_to: unique.find((member) => member.id === task.assigned_to),
@@ -226,12 +273,20 @@ export const useAppStore = create<AppState>()((set, get) => ({
             ? { ...task, expand: { assigned_to: updatedMember } }
             : task
         ),
+        trashedTasks: s.trashedTasks.map((task) =>
+          task.assigned_to === id
+            ? { ...task, expand: { assigned_to: updatedMember } }
+            : task
+        ),
       };
     }),
   removeMember: (id) =>
     set((s) => ({
       members: s.members.filter((m) => m.id !== id),
       tasks: s.tasks.map((task) =>
+        task.assigned_to === id ? { ...task, expand: { assigned_to: undefined } } : task
+      ),
+      trashedTasks: s.trashedTasks.map((task) =>
         task.assigned_to === id ? { ...task, expand: { assigned_to: undefined } } : task
       ),
     })),
@@ -277,7 +332,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
     };
   },
   checkDuplicate: (taskId) => {
-    const existing = get().tasks.find((t) => t.task_id === taskId);
+    const normalizedTaskId = taskId.trim().toLocaleLowerCase('en-US');
+    const existing = [...get().tasks, ...get().trashedTasks].find(
+      (task) => task.task_id.trim().toLocaleLowerCase('en-US') === normalizedTaskId
+    );
     if (!existing) return { isDuplicate: false };
     const member = get().members.find((m) => m.id === existing.assigned_to);
     return { isDuplicate: true, assignedTo: member };

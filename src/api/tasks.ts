@@ -8,6 +8,7 @@ const LOCAL_FALLBACK_ENABLED = import.meta.env.VITE_ENABLE_LOCAL_FALLBACK === 't
 const USER_FIELDS = 'id,username,email,name,role,avatar,is_active,created,updated';
 
 let localTasks: Task[] = [...MOCK_TASKS];
+let localTrashedTasks: Task[] = [];
 let localUsers: User[] = [...MOCK_USERS];
 let localSettings: AppSettings = { ...MOCK_SETTINGS };
 let localPasswords: Record<string, string> = {};
@@ -46,6 +47,18 @@ function cloudWriteError(action: string, error: unknown): Error {
 
 function isUniqueViolation(error: unknown): boolean {
   return !!error && typeof error === 'object' && 'code' in error && error.code === '23505';
+}
+
+function isMissingRecycleBinSchema(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = 'code' in error ? String(error.code) : '';
+  const message = 'message' in error ? String(error.message) : '';
+  return (
+    code === '42703' ||
+    code === 'PGRST204' ||
+    message.includes('deleted_at') ||
+    message.includes('deleted_by')
+  );
 }
 
 async function stableTaskRecordId(taskId: string): Promise<string> {
@@ -102,6 +115,8 @@ function normalizeTask(task: Task): Task {
     submission_final_answer: task.submission_final_answer ?? '',
     submission_notes: task.submission_notes ?? '',
     studio_result: task.studio_result ?? '',
+    deleted_at: task.deleted_at ?? null,
+    deleted_by: task.deleted_by ?? null,
   };
 }
 
@@ -111,6 +126,12 @@ try {
   if (savedTasks) {
     localTasks = (JSON.parse(savedTasks) as Task[]).map(({ expand: _expand, ...task }) =>
       normalizeTask(task as Task)
+    );
+  }
+  const savedTrashedTasks = localStorage.getItem('agnus_local_trashed_tasks');
+  if (savedTrashedTasks) {
+    localTrashedTasks = (JSON.parse(savedTrashedTasks) as Task[]).map(
+      ({ expand: _expand, ...task }) => normalizeTask(task as Task)
     );
   }
   const savedUsers = localStorage.getItem('agnus_local_users');
@@ -131,7 +152,9 @@ function saveLocalState() {
   try {
     localUsers = deduplicateUsers(localUsers);
     const cachedTasks = localTasks.map(({ expand: _expand, ...task }) => task);
+    const cachedTrashedTasks = localTrashedTasks.map(({ expand: _expand, ...task }) => task);
     localStorage.setItem('agnus_local_tasks', JSON.stringify(cachedTasks));
+    localStorage.setItem('agnus_local_trashed_tasks', JSON.stringify(cachedTrashedTasks));
     localStorage.setItem('agnus_local_users', JSON.stringify(localUsers));
     localStorage.setItem('agnus_local_settings', JSON.stringify(localSettings));
     if (LOCAL_FALLBACK_ENABLED) {
@@ -175,14 +198,23 @@ export async function fetchTasks(): Promise<Task[]> {
     const { data: usersData } = await supabase.from('users').select(USER_FIELDS);
     const userList = usersData ? deduplicateUsers(usersData as User[]) : localUsers;
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('tasks')
       .select('*')
+      .is('deleted_at', null)
       .order('created', { ascending: false });
 
+    if (error && isMissingRecycleBinSchema(error)) {
+      ({ data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .order('created', { ascending: false }));
+    }
     if (error) throw error;
     if (data) {
-      const tasks = data.map((t) => expandTask(t as Task, userList));
+      const tasks = data
+        .map((t) => expandTask(t as Task, userList))
+        .filter((task) => !task.deleted_at);
       localTasks = tasks;
       saveLocalState();
       return tasks;
@@ -193,20 +225,55 @@ export async function fetchTasks(): Promise<Task[]> {
   return localTasks;
 }
 
+export async function fetchDeletedTasks(): Promise<Task[]> {
+  try {
+    const { data: usersData } = await supabase.from('users').select(USER_FIELDS);
+    const userList = usersData ? deduplicateUsers(usersData as User[]) : localUsers;
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .not('deleted_at', 'is', null)
+      .order('deleted_at', { ascending: false });
+
+    if (error && isMissingRecycleBinSchema(error)) return [];
+    if (error) throw error;
+    if (data) {
+      localTrashedTasks = data.map((task) => expandTask(task as Task, userList));
+      saveLocalState();
+      return localTrashedTasks;
+    }
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) {
+      throw cloudWriteError('Fetching recycled tasks', error);
+    }
+  }
+  return localTrashedTasks;
+}
+
 export async function fetchTasksByMember(memberId: string): Promise<Task[]> {
   try {
     const { data: usersData } = await supabase.from('users').select(USER_FIELDS);
     const userList = usersData ? deduplicateUsers(usersData as User[]) : localUsers;
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('tasks')
       .select('*')
       .eq('assigned_to', memberId)
+      .is('deleted_at', null)
       .order('created', { ascending: false });
 
+    if (error && isMissingRecycleBinSchema(error)) {
+      ({ data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('assigned_to', memberId)
+        .order('created', { ascending: false }));
+    }
     if (error) throw error;
     if (data) {
-      return data.map((t) => expandTask(t as Task, userList));
+      return data
+        .map((t) => expandTask(t as Task, userList))
+        .filter((task) => !task.deleted_at);
     }
   } catch (error) {
     if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Fetching member tasks', error);
@@ -219,15 +286,25 @@ export async function fetchTasksByStatus(status: TaskStatus): Promise<Task[]> {
     const { data: usersData } = await supabase.from('users').select(USER_FIELDS);
     const userList = usersData ? deduplicateUsers(usersData as User[]) : localUsers;
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('tasks')
       .select('*')
       .eq('status', status)
+      .is('deleted_at', null)
       .order('created', { ascending: false });
 
+    if (error && isMissingRecycleBinSchema(error)) {
+      ({ data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('status', status)
+        .order('created', { ascending: false }));
+    }
     if (error) throw error;
     if (data) {
-      return data.map((t) => expandTask(t as Task, userList));
+      return data
+        .map((t) => expandTask(t as Task, userList))
+        .filter((task) => !task.deleted_at);
     }
   } catch (error) {
     if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Fetching status tasks', error);
@@ -266,16 +343,28 @@ export async function createTask(data: {
     payment_status: 'not_applicable',
     payment_amount_usd: 0,
     payment_date: '',
+    deleted_at: null,
+    deleted_by: null,
     created: new Date().toISOString(),
     updated: new Date().toISOString(),
   };
 
   try {
-    const { data: createdData, error } = await supabase
+    let { data: createdData, error } = await supabase
       .from('tasks')
       .insert([newTask])
       .select('*')
       .single();
+    if (error && isMissingRecycleBinSchema(error)) {
+      const legacyTask: Partial<Task> = { ...newTask };
+      delete legacyTask.deleted_at;
+      delete legacyTask.deleted_by;
+      ({ data: createdData, error } = await supabase
+        .from('tasks')
+        .insert([legacyTask])
+        .select('*')
+        .single());
+    }
     if (error) throw error;
     if (createdData) {
       const expanded = expandTask(createdData as Task, localUsers);
@@ -438,31 +527,157 @@ export async function updateTasks(ids: string[], data: Partial<Task>): Promise<T
   return localTasks.filter((task) => idSet.has(task.id));
 }
 
-export async function deleteTask(id: string): Promise<void> {
+export async function moveTaskToTrash(id: string, deletedBy: string): Promise<Task> {
+  const deletedAt = new Date().toISOString();
   try {
-    const { error } = await supabase.from('tasks').delete().eq('id', id);
-    if (error) throw error;
+    const { data, error } = await supabase
+      .from('tasks')
+      .update({
+        deleted_at: deletedAt,
+        deleted_by: deletedBy,
+        updated: deletedAt,
+      })
+      .eq('id', id)
+      .is('deleted_at', null)
+      .select('*')
+      .maybeSingle();
+
+    if (error) {
+      if (isMissingRecycleBinSchema(error)) {
+        throw new Error('Recycle Bin database migration has not been applied yet');
+      }
+      throw error;
+    }
+    if (!data) throw new Error('Task was already recycled or no longer exists');
+
+    const recycled = expandTask(data as Task, localUsers);
+    localTasks = localTasks.filter((task) => task.id !== id);
+    localTrashedTasks = [
+      recycled,
+      ...localTrashedTasks.filter((task) => task.id !== id),
+    ];
+    saveLocalState();
+    return recycled;
   } catch (error) {
-    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Deleting task', error);
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Moving task to Recycle Bin', error);
   }
-  localTasks = localTasks.filter((t) => t.id !== id);
+
+  const existing = localTasks.find((task) => task.id === id);
+  if (!existing) throw new Error('Task not found');
+  const recycled = { ...existing, deleted_at: deletedAt, deleted_by: deletedBy, updated: deletedAt };
+  localTasks = localTasks.filter((task) => task.id !== id);
+  localTrashedTasks = [
+    recycled,
+    ...localTrashedTasks.filter((task) => task.id !== id),
+  ];
   saveLocalState();
+  return recycled;
 }
 
-export async function deleteTasks(ids: string[]): Promise<void> {
+export async function moveTasksToTrash(ids: string[], deletedBy: string): Promise<Task[]> {
+  if (ids.length === 0) return [];
+  const deletedAt = new Date().toISOString();
   try {
-    const { error } = await supabase.from('tasks').delete().in('id', ids);
-    if (error) throw error;
+    const { data, error } = await supabase
+      .from('tasks')
+      .update({
+        deleted_at: deletedAt,
+        deleted_by: deletedBy,
+        updated: deletedAt,
+      })
+      .in('id', ids)
+      .is('deleted_at', null)
+      .select('*');
+
+    if (error) {
+      if (isMissingRecycleBinSchema(error)) {
+        throw new Error('Recycle Bin database migration has not been applied yet');
+      }
+      throw error;
+    }
+
+    const recycledTasks = (data || []).map((task) => expandTask(task as Task, localUsers));
+    const recycledIds = new Set(recycledTasks.map((task) => task.id));
+    localTasks = localTasks.filter((task) => !recycledIds.has(task.id));
+    localTrashedTasks = [
+      ...recycledTasks,
+      ...localTrashedTasks.filter((task) => !recycledIds.has(task.id)),
+    ];
+    saveLocalState();
+    return recycledTasks;
   } catch (error) {
-    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Deleting tasks', error);
+    if (!LOCAL_FALLBACK_ENABLED) {
+      throw cloudWriteError('Moving tasks to Recycle Bin', error);
+    }
   }
-  localTasks = localTasks.filter((t) => !ids.includes(t.id));
+
+  const idSet = new Set(ids);
+  const recycledTasks = localTasks
+    .filter((task) => idSet.has(task.id))
+    .map((task) => ({
+      ...task,
+      deleted_at: deletedAt,
+      deleted_by: deletedBy,
+      updated: deletedAt,
+    }));
+  localTasks = localTasks.filter((task) => !idSet.has(task.id));
+  localTrashedTasks = [
+    ...recycledTasks,
+    ...localTrashedTasks.filter((task) => !idSet.has(task.id)),
+  ];
   saveLocalState();
+  return recycledTasks;
+}
+
+export async function restoreTask(id: string): Promise<Task> {
+  const restoredAt = new Date().toISOString();
+  try {
+    const { data, error } = await supabase
+      .from('tasks')
+      .update({
+        deleted_at: null,
+        deleted_by: null,
+        updated: restoredAt,
+      })
+      .eq('id', id)
+      .not('deleted_at', 'is', null)
+      .select('*')
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) throw new Error('Task was already restored or no longer exists');
+
+    const restored = expandTask(data as Task, localUsers);
+    localTrashedTasks = localTrashedTasks.filter((task) => task.id !== id);
+    localTasks = [restored, ...localTasks.filter((task) => task.id !== id)];
+    saveLocalState();
+    return restored;
+  } catch (error) {
+    if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Restoring task', error);
+  }
+
+  const existing = localTrashedTasks.find((task) => task.id === id);
+  if (!existing) throw new Error('Recycled task not found');
+  const restored = {
+    ...existing,
+    deleted_at: null,
+    deleted_by: null,
+    updated: restoredAt,
+  };
+  localTrashedTasks = localTrashedTasks.filter((task) => task.id !== id);
+  localTasks = [restored, ...localTasks.filter((task) => task.id !== id)];
+  saveLocalState();
+  return restored;
 }
 
 export async function checkDuplicateTaskId(
   taskId: string
-): Promise<{ isDuplicate: boolean; existingTask?: Task; assignedToName?: string }> {
+): Promise<{
+  isDuplicate: boolean;
+  isRecycled?: boolean;
+  existingTask?: Task;
+  assignedToName?: string;
+}> {
   try {
     const { data, error } = await supabase
       .from('tasks')
@@ -476,6 +691,7 @@ export async function checkDuplicateTaskId(
       const assignedTo = localUsers.find((u) => u.id === existing.assigned_to);
       return {
         isDuplicate: true,
+        isRecycled: Boolean(existing.deleted_at),
         existingTask: existing,
         assignedToName: assignedTo?.name || 'Unknown Member',
       };
@@ -484,13 +700,14 @@ export async function checkDuplicateTaskId(
     if (!LOCAL_FALLBACK_ENABLED) throw cloudWriteError('Checking duplicate task ID', error);
   }
 
-  const existing = localTasks.find(
+  const existing = [...localTasks, ...localTrashedTasks].find(
     (t) => t.task_id.toLowerCase() === taskId.trim().toLowerCase()
   );
   if (!existing) return { isDuplicate: false };
   const assignedTo = localUsers.find((u) => u.id === existing.assigned_to);
   return {
     isDuplicate: true,
+    isRecycled: Boolean(existing.deleted_at),
     existingTask: existing,
     assignedToName: assignedTo?.name || existing.expand?.assigned_to?.name || 'Unknown',
   };
@@ -745,9 +962,11 @@ export async function updateSettings(
 
 export function exportLocalBackup(): string {
   const backupData = {
-    version: 2,
+    version: 3,
     timestamp: new Date().toISOString(),
-    tasks: localTasks.map(({ expand: _expand, ...task }) => task),
+    tasks: [...localTasks, ...localTrashedTasks].map(
+      ({ expand: _expand, ...task }) => task
+    ),
     users: localUsers.map(toPublicUser),
     settings: localSettings,
   };
@@ -756,7 +975,12 @@ export function exportLocalBackup(): string {
 
 export async function importLocalBackup(
   jsonStr: string
-): Promise<{ tasks: Task[]; users: User[]; settings: AppSettings }> {
+): Promise<{
+  tasks: Task[];
+  trashedTasks: Task[];
+  users: User[];
+  settings: AppSettings;
+}> {
   const parsed = JSON.parse(jsonStr);
   if (!Array.isArray(parsed.tasks) || !Array.isArray(parsed.users)) {
     throw new Error('Backup must contain task and user arrays');
@@ -772,27 +996,46 @@ export async function importLocalBackup(
     throw new Error('Backup contains invalid settings');
   }
 
-  const importedTasks = parsed.tasks as Task[];
+  const importedTasks = (parsed.tasks as Task[]).map(normalizeTask);
   const importedUsers = deduplicateUsers(parsed.users as User[]);
   const importedSettings = parsed.settings as AppSettings;
   const taskRows = importedTasks.map(({ expand: _expand, ...task }) => task);
 
   if (!LOCAL_FALLBACK_ENABLED) {
-    const [usersResult, tasksResult, settingsResult] = await Promise.all([
+    const [usersResult, settingsResult] = await Promise.all([
       supabase.from('users').upsert(importedUsers),
-      supabase.from('tasks').upsert(taskRows),
       supabase.from('settings').upsert(importedSettings),
     ]);
+    let tasksResult = await supabase.from('tasks').upsert(taskRows);
+    if (tasksResult.error && isMissingRecycleBinSchema(tasksResult.error)) {
+      const legacyTaskRows = taskRows.map((task) => {
+        const legacyTask: Partial<Task> = { ...task };
+        delete legacyTask.deleted_at;
+        delete legacyTask.deleted_by;
+        return legacyTask;
+      });
+      tasksResult = await supabase.from('tasks').upsert(legacyTaskRows);
+    }
     const syncError = usersResult.error || tasksResult.error || settingsResult.error;
     if (syncError) throw cloudWriteError('Importing backup', syncError);
   }
 
   localUsers = importedUsers;
-  localTasks = importedTasks.map((task) => expandTask(task, importedUsers));
+  localTasks = importedTasks
+    .filter((task) => !task.deleted_at)
+    .map((task) => expandTask(task, importedUsers));
+  localTrashedTasks = importedTasks
+    .filter((task) => Boolean(task.deleted_at))
+    .map((task) => expandTask(task, importedUsers));
   localSettings = importedSettings;
   saveLocalState();
 
-  return { tasks: localTasks, users: localUsers, settings: localSettings };
+  return {
+    tasks: localTasks,
+    trashedTasks: localTrashedTasks,
+    users: localUsers,
+    settings: localSettings,
+  };
 }
 
 // ─── Realtime Subscriptions ──────────────────────────────────────────────────

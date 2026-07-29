@@ -40,7 +40,11 @@ export default function UploadTasks() {
         if (latestCheckRef.current !== id.trim()) return;
         if (result.isDuplicate) {
           setDupStatus('duplicate');
-          setDupMessage(`${t('upload.duplicate_other')} ${result.assignedToName}`);
+          setDupMessage(
+            result.isRecycled
+              ? t('upload.duplicate_recycled')
+              : `${t('upload.duplicate_other')} ${result.assignedToName}`
+          );
         } else {
           setDupStatus('new');
           setDupMessage(t('upload.new_task'));
@@ -100,8 +104,14 @@ export default function UploadTasks() {
       const duplicate = await checkDuplicateTaskId(taskId.trim());
       if (duplicate.isDuplicate) {
         setDupStatus('duplicate');
-        setDupMessage(`${t('upload.duplicate_other')} ${duplicate.assignedToName}`);
-        addToast(t('upload.duplicate_same'), 'warning');
+        const message = duplicate.isRecycled
+          ? t('upload.duplicate_recycled')
+          : `${t('upload.duplicate_other')} ${duplicate.assignedToName}`;
+        setDupMessage(message);
+        addToast(
+          duplicate.isRecycled ? t('upload.restore_recycled') : t('upload.duplicate_same'),
+          'warning'
+        );
         return;
       }
       const task = await createTask({
