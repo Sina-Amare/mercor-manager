@@ -258,7 +258,14 @@ export default function Prompts() {
     }
   };
 
-  const canManage = (prompt: SavedPrompt) =>
+  const canEdit = (prompt: SavedPrompt) =>
+    prompt.created_by
+      ? prompt.created_by === user?.id
+      : prompt.visibility === 'public'
+        ? user?.role === 'admin'
+        : prompt.owner_id === user?.id;
+
+  const canDelete = (prompt: SavedPrompt) =>
     prompt.visibility === 'public'
       ? user?.role === 'admin'
       : prompt.owner_id === user?.id;
@@ -393,25 +400,26 @@ export default function Prompts() {
                       <Copy size={15} />
                       {t('prompts.copy')}
                     </button>
-                    {canManage(prompt) ? (
-                      <>
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-icon btn-sm"
-                          onClick={() => openEdit(prompt)}
-                          aria-label={`${t('common.edit')} ${prompt.title}`}
-                        >
-                          <Pencil size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-icon btn-sm prompt-delete-button"
-                          onClick={() => setDeletingPrompt(prompt)}
-                          aria-label={`${t('common.delete')} ${prompt.title}`}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </>
+                    {canEdit(prompt) ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm prompt-edit-button"
+                        onClick={() => openEdit(prompt)}
+                        aria-label={`${t('common.edit')} ${prompt.title}`}
+                      >
+                        <Pencil size={15} />
+                        {t('common.edit')}
+                      </button>
+                    ) : null}
+                    {canDelete(prompt) ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-icon btn-sm prompt-delete-button"
+                        onClick={() => setDeletingPrompt(prompt)}
+                        aria-label={`${t('common.delete')} ${prompt.title}`}
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     ) : null}
                   </div>
                 </div>

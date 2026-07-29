@@ -24,7 +24,14 @@ function promptError(action: string, error: unknown) {
   return new Error(`${action} failed in Supabase: ${message}`);
 }
 
-function canManagePrompt(prompt: SavedPrompt, actor: User) {
+function canEditPrompt(prompt: SavedPrompt, actor: User) {
+  if (prompt.created_by) return prompt.created_by === actor.id;
+  return prompt.visibility === 'public'
+    ? actor.role === 'admin'
+    : prompt.owner_id === actor.id;
+}
+
+function canDeletePrompt(prompt: SavedPrompt, actor: User) {
   return prompt.visibility === 'public'
     ? actor.role === 'admin'
     : prompt.owner_id === actor.id;
@@ -92,8 +99,8 @@ export async function updatePrompt(
   if (!currentData) throw new Error('Prompt no longer exists');
 
   const current = currentData as SavedPrompt;
-  if (!canManagePrompt(current, actor)) {
-    throw new Error('You do not have permission to edit this prompt');
+  if (!canEditPrompt(current, actor)) {
+    throw new Error('Only the prompt creator can edit this prompt');
   }
 
   const { data, error } = await supabase
@@ -117,7 +124,7 @@ export async function deletePrompt(id: string, actor: User): Promise<void> {
   if (!currentData) return;
 
   const current = currentData as SavedPrompt;
-  if (!canManagePrompt(current, actor)) {
+  if (!canDeletePrompt(current, actor)) {
     throw new Error('You do not have permission to delete this prompt');
   }
 
