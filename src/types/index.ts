@@ -53,6 +53,11 @@ export interface Task {
   admin_verdict: AdminVerdict | '';
   admin_verdict_date: string;
   admin_notes: string;
+  submission_prompt: string;
+  submission_dsp: string;
+  submission_final_answer: string;
+  submission_notes: string;
+  studio_result: string;
   payment_status: PaymentStatus;
   payment_amount_usd: number;
   payment_date: string;

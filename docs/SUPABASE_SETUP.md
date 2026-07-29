@@ -15,6 +15,7 @@ Apply these files in filename order through the Supabase SQL editor:
 
 1. `supabase/migrations/20260728_realtime_task_integrity.sql`
 2. `supabase/migrations/20260729_prompts_workspace.sql`
+3. `supabase/migrations/20260729_task_submission_details.sql`
 
 Together they:
 
@@ -23,6 +24,8 @@ Together they:
   whitespace;
 - create the shared and per-user prompt library with ownership, timestamps,
   validation, and cleanup when a user is deleted.
+- add the collaborative Prompt, DSP, Final Answer, Notes, and Studio Result
+  fields that unlock after an SWF or SWOF verdict.
 
 After applying them, verify that `tasks` and `prompts` appear under
 **Database → Publications → supabase_realtime**.

@@ -94,11 +94,24 @@ function isTask(value: unknown): value is Task {
   );
 }
 
+function normalizeTask(task: Task): Task {
+  return {
+    ...task,
+    submission_prompt: task.submission_prompt ?? '',
+    submission_dsp: task.submission_dsp ?? '',
+    submission_final_answer: task.submission_final_answer ?? '',
+    submission_notes: task.submission_notes ?? '',
+    studio_result: task.studio_result ?? '',
+  };
+}
+
 // Load from localStorage if available
 try {
   const savedTasks = localStorage.getItem('agnus_local_tasks');
   if (savedTasks) {
-    localTasks = (JSON.parse(savedTasks) as Task[]).map(({ expand: _expand, ...task }) => task);
+    localTasks = (JSON.parse(savedTasks) as Task[]).map(({ expand: _expand, ...task }) =>
+      normalizeTask(task as Task)
+    );
   }
   const savedUsers = localStorage.getItem('agnus_local_users');
   if (savedUsers) localUsers = deduplicateUsers(JSON.parse(savedUsers));
@@ -150,7 +163,7 @@ export function validateLocalLogin(username: string, password: string): User | n
 function expandTask(task: Task, userList: User[]): Task {
   const assigned = userList.find((u) => u.id === task.assigned_to);
   return {
-    ...task,
+    ...normalizeTask(task),
     expand: { assigned_to: assigned },
   };
 }
@@ -245,6 +258,11 @@ export async function createTask(data: {
     admin_verdict: '',
     admin_verdict_date: '',
     admin_notes: '',
+    submission_prompt: '',
+    submission_dsp: '',
+    submission_final_answer: '',
+    submission_notes: '',
+    studio_result: '',
     payment_status: 'not_applicable',
     payment_amount_usd: 0,
     payment_date: '',
@@ -282,6 +300,7 @@ export async function createTask(data: {
 export interface TaskUpdateGuard {
   expectedStatus: TaskStatus;
   expectedAssignee?: string;
+  expectedUpdated?: string;
 }
 
 export class TaskConflictError extends Error {
@@ -312,6 +331,9 @@ export async function updateTask(
       updateQuery = updateQuery.eq('status', guard.expectedStatus);
       if (guard.expectedAssignee) {
         updateQuery = updateQuery.eq('assigned_to', guard.expectedAssignee);
+      }
+      if (guard.expectedUpdated) {
+        updateQuery = updateQuery.eq('updated', guard.expectedUpdated);
       }
     }
 
@@ -356,7 +378,8 @@ export async function updateTask(
       guard &&
       (
         localTasks[idx].status !== guard.expectedStatus ||
-        (guard.expectedAssignee && localTasks[idx].assigned_to !== guard.expectedAssignee)
+        (guard.expectedAssignee && localTasks[idx].assigned_to !== guard.expectedAssignee) ||
+        (guard.expectedUpdated && localTasks[idx].updated !== guard.expectedUpdated)
       )
     ) {
       throw new TaskConflictError(localTasks[idx]);

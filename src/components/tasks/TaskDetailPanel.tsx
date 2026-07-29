@@ -23,16 +23,51 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
   const isMyTask = task.assigned_to === user?.id;
 
   const [notes, setNotes] = useState(task.admin_notes || '');
+  const [submissionPrompt, setSubmissionPrompt] = useState(task.submission_prompt || '');
+  const [submissionDsp, setSubmissionDsp] = useState(task.submission_dsp || '');
+  const [submissionFinalAnswer, setSubmissionFinalAnswer] = useState(
+    task.submission_final_answer || ''
+  );
+  const [submissionNotes, setSubmissionNotes] = useState(task.submission_notes || '');
+  const [studioResult, setStudioResult] = useState(task.studio_result || '');
   const [paymentUsd, setPaymentUsd] = useState(task.payment_amount_usd || 0);
   const [saving, setSaving] = useState(false);
   const [confirmingAction, setConfirmingAction] = useState<{ label: string; status: TaskStatus; color: string } | null>(null);
   const assignableMembers = members.filter(
     (member) => member.role === 'member' && member.is_active
   );
+  const submissionVerdict =
+    task.member_verdict === 'swf' || task.member_verdict === 'swof'
+      ? task.member_verdict
+      : null;
+  const hasSubmissionVerdict = submissionVerdict !== null;
+  const canManageSubmission = isAdmin || isMyTask;
+  const canEditSubmission = hasSubmissionVerdict && canManageSubmission;
+  const submissionDirty =
+    submissionPrompt !== (task.submission_prompt || '') ||
+    submissionDsp !== (task.submission_dsp || '') ||
+    submissionFinalAnswer !== (task.submission_final_answer || '') ||
+    submissionNotes !== (task.submission_notes || '') ||
+    studioResult !== (task.studio_result || '');
 
   useEffect(() => {
     setNotes(task.admin_notes || '');
   }, [task.admin_notes, task.id]);
+
+  useEffect(() => {
+    setSubmissionPrompt(task.submission_prompt || '');
+    setSubmissionDsp(task.submission_dsp || '');
+    setSubmissionFinalAnswer(task.submission_final_answer || '');
+    setSubmissionNotes(task.submission_notes || '');
+    setStudioResult(task.studio_result || '');
+  }, [
+    task.id,
+    task.submission_prompt,
+    task.submission_dsp,
+    task.submission_final_answer,
+    task.submission_notes,
+    task.studio_result,
+  ]);
 
   useEffect(() => {
     setPaymentUsd(task.payment_amount_usd || 0);
@@ -76,6 +111,7 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
       const updated = await apiUpdateTask(task.id, data, {
         expectedStatus: task.status,
         expectedAssignee: isMember ? user?.id : undefined,
+        expectedUpdated: task.updated,
       });
       updateTask(task.id, updated);
       addToast(`Task status updated to ${newStatus.toUpperCase()}`, 'success');
@@ -94,6 +130,45 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
     } finally {
       setSaving(false);
       setConfirmingAction(null);
+    }
+  };
+
+  const handleSaveSubmission = async () => {
+    if (!canEditSubmission || !submissionDirty) return;
+
+    setSaving(true);
+    try {
+      const updated = await apiUpdateTask(
+        task.id,
+        {
+          submission_prompt: submissionPrompt,
+          submission_dsp: submissionDsp,
+          submission_final_answer: submissionFinalAnswer,
+          submission_notes: submissionNotes,
+          studio_result: studioResult,
+        },
+        {
+          expectedStatus: task.status,
+          expectedAssignee: task.assigned_to,
+          expectedUpdated: task.updated,
+        }
+      );
+      updateTask(task.id, updated);
+      addToast(t('tasks.submission_saved'), 'success');
+    } catch (error) {
+      if (error instanceof TaskConflictError) {
+        if (error.latestTask) {
+          updateTask(task.id, error.latestTask);
+        } else if (error.latestTask === null) {
+          removeTask(task.id);
+          onClose();
+        }
+        addToast(t('tasks.conflict'), 'warning');
+      } else {
+        addToast(t('tasks.submission_save_error'), 'error');
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -176,6 +251,7 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
         {
           expectedStatus: task.status,
           expectedAssignee: task.assigned_to,
+          expectedUpdated: task.updated,
         }
       );
       updateTask(task.id, updated);
@@ -349,6 +425,108 @@ export default function TaskDetailPanel({ task, onClose, variant = 'drawer' }: P
             </div>
           )}
         </div>
+
+        {/* Collaborative Submission Details */}
+        {canManageSubmission && !hasSubmissionVerdict && (
+          <div className="task-submission-locked" role="note">
+            <AlertCircle size={18} aria-hidden="true" />
+            <div>
+              <strong>{t('tasks.submission_details')}</strong>
+              <span>{t('tasks.submission_locked')}</span>
+            </div>
+          </div>
+        )}
+
+        {canManageSubmission && submissionVerdict && (
+          <section className="task-submission-section" aria-labelledby="task-submission-title">
+            <div className="task-submission-header">
+              <div>
+                <h3 id="task-submission-title">{t('tasks.submission_details')}</h3>
+                <p>{t('tasks.submission_help')}</p>
+              </div>
+              <StatusBadge status={submissionVerdict} />
+            </div>
+
+            <div className="task-submission-grid">
+              <label className="task-submission-field">
+                <span>{t('tasks.submission_prompt')}</span>
+                <textarea
+                  className="form-textarea task-submission-textarea"
+                  value={submissionPrompt}
+                  onChange={(event) => setSubmissionPrompt(event.target.value)}
+                  placeholder={t('tasks.submission_prompt_placeholder')}
+                  rows={5}
+                  dir="auto"
+                  disabled={!canEditSubmission || saving}
+                />
+              </label>
+
+              <label className="task-submission-field">
+                <span>{t('tasks.submission_dsp')}</span>
+                <textarea
+                  className="form-textarea task-submission-textarea"
+                  value={submissionDsp}
+                  onChange={(event) => setSubmissionDsp(event.target.value)}
+                  placeholder={t('tasks.submission_dsp_placeholder')}
+                  rows={5}
+                  dir="auto"
+                  disabled={!canEditSubmission || saving}
+                />
+              </label>
+
+              <label className="task-submission-field">
+                <span>{t('tasks.submission_final_answer')}</span>
+                <textarea
+                  className="form-textarea task-submission-textarea"
+                  value={submissionFinalAnswer}
+                  onChange={(event) => setSubmissionFinalAnswer(event.target.value)}
+                  placeholder={t('tasks.submission_final_answer_placeholder')}
+                  rows={5}
+                  dir="auto"
+                  disabled={!canEditSubmission || saving}
+                />
+              </label>
+
+              <label className="task-submission-field">
+                <span>{t('tasks.submission_notes')}</span>
+                <textarea
+                  className="form-textarea task-submission-textarea"
+                  value={submissionNotes}
+                  onChange={(event) => setSubmissionNotes(event.target.value)}
+                  placeholder={t('tasks.submission_notes_placeholder')}
+                  rows={5}
+                  dir="auto"
+                  disabled={!canEditSubmission || saving}
+                />
+              </label>
+            </div>
+
+            <label className="task-submission-field task-studio-result">
+              <span>{t('tasks.studio_result')}</span>
+              <small>{t('tasks.studio_result_help')}</small>
+              <textarea
+                className="form-textarea task-submission-textarea"
+                value={studioResult}
+                onChange={(event) => setStudioResult(event.target.value)}
+                placeholder={t('tasks.studio_result_placeholder')}
+                rows={5}
+                dir="auto"
+                disabled={!canEditSubmission || saving}
+              />
+            </label>
+
+            <div className="task-submission-actions">
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={handleSaveSubmission}
+                disabled={saving || !canEditSubmission || !submissionDirty}
+              >
+                <Save size={14} aria-hidden="true" />
+                {t('common.save')}
+              </button>
+            </div>
+          </section>
+        )}
 
         {/* Admin Notes */}
         {isAdmin && (
