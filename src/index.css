@@ -3273,3 +3273,38 @@ body {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
 }
+
+/* ─── Member verdict, kept visible after the task moves on ───────────────── */
+.status-cell {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Outlined rather than filled, so it reads as history behind the current
+   status badge instead of competing with it. */
+.verdict-chip {
+  align-items: center;
+  background: transparent;
+  border: 1px dashed currentcolor;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  font-size: 0.625rem;
+  font-weight: var(--weight-semibold);
+  gap: 3px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+.verdict-chip-stacked {
+  opacity: 0.85;
+}
+
+.task-context-verdict {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block-start: var(--space-1);
+}

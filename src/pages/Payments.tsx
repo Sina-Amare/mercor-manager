@@ -5,6 +5,7 @@ import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../s
 import { formatCurrency, formatNumber, usdToIrr } from '../utils/dates';
 import DateDisplay from '../components/shared/DateDisplay';
 import StatusBadge from '../components/shared/StatusBadge';
+import VerdictChip from '../components/tasks/VerdictChip';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import { TaskConflictError, updateTask as apiUpdateTask } from '../api/tasks';
 import type { Task } from '../types';
@@ -243,7 +244,10 @@ export default function Payments() {
                       </td>
                     )}
                     <td data-label={t('tasks.status')}>
-                      <StatusBadge status={task.status} />
+                      <div className="status-cell">
+                        <StatusBadge status={task.status} />
+                        <VerdictChip task={task} variant="stacked" />
+                      </div>
                     </td>
                     <td data-label={t('payments.amount_usd')}>
                       <span className="payment-amount">

@@ -239,7 +239,8 @@
     "field_submission_notes": "یادداشت‌ها",
     "field_studio_result": "نتیجه استودیو",
     "field_deleted_at": "سطل بازیافت",
-    "field_created": "ایجاد"
+    "field_created": "ایجاد",
+    "submitted_as": "ثبت‌شده به‌عنوان"
   },
   "upload": {
     "title": "آپلود تسک",

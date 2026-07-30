@@ -6,6 +6,7 @@ import StatusBadge from '../../shared/StatusBadge';
 import CopyButton from '../../shared/CopyButton';
 import ConfirmDialog, { type ConfirmTone } from '../../shared/ConfirmDialog';
 import StatusGlossary from '../StatusGlossary';
+import VerdictChip from '../VerdictChip';
 import {
   actorFor,
   availableTransitions,
@@ -304,11 +305,17 @@ export default function TaskWorkspace({ task, onClose }: Props) {
             ariaLabel={`${t('common.copy')}: ${t('tasks.task_id')}`}
           />
           <StatusBadge status={task.status} />
-          <StatusGlossary status={task.status} />
+          <VerdictChip task={task} />
+          <StatusGlossary status={task.member_verdict || task.status} />
         </div>
       </header>
 
-      <LifecycleStepper status={task.status} activeStage={stage} onSelectStage={setStage} />
+      <LifecycleStepper
+        status={task.status}
+        verdict={task.member_verdict}
+        activeStage={stage}
+        onSelectStage={setStage}
+      />
 
       <div className="task-workspace-body">
         <TaskContextPane

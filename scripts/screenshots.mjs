@@ -47,7 +47,7 @@ const task = (over) => ({
 const FOCUS = task({
   id: 'task_focus',
   task_id: 'task_9f2b71c0aa4e',
-  status: 'swf',
+  status: 'in_studio',
   member_verdict: 'swf',
   member_verdict_date: iso(2),
   assigned_to: 'u_nasi',

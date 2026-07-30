@@ -239,7 +239,8 @@
     "field_submission_notes": "notes",
     "field_studio_result": "studio result",
     "field_deleted_at": "recycle bin",
-    "field_created": "created"
+    "field_created": "created",
+    "submitted_as": "Submitted as"
   },
   "upload": {
     "title": "Upload Tasks",

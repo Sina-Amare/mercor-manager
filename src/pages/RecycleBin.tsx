@@ -3,6 +3,7 @@ import { RotateCcw, Search, Trash2 } from 'lucide-react';
 import { moveTaskToTrash, restoreTask } from '../api/tasks';
 import { useAuthStore } from '../store';
 import StatusBadge from '../components/shared/StatusBadge';
+import VerdictChip from '../components/tasks/VerdictChip';
 import DateDisplay from '../components/shared/DateDisplay';
 import CopyButton from '../components/shared/CopyButton';
 import { useAppStore, useLanguageStore, useToastStore } from '../store';
@@ -139,7 +140,10 @@ export default function RecycleBin() {
                       </div>
                     </td>
                     <td data-label={t('recycle_bin.saved_status')}>
-                      <StatusBadge status={task.status} />
+                      <div className="status-cell">
+                        <StatusBadge status={task.status} />
+                        <VerdictChip task={task} variant="stacked" />
+                      </div>
                     </td>
                     <td data-label={t('recycle_bin.deleted_by')}>
                       {deletedBy?.name || '—'}

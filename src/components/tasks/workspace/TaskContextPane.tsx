@@ -3,6 +3,7 @@ import type { Task, User } from '../../../types';
 import { useLanguageStore } from '../../../store';
 import CopyButton from '../../shared/CopyButton';
 import DateDisplay from '../../shared/DateDisplay';
+import StatusBadge from '../../shared/StatusBadge';
 
 interface Props {
   task: Task;
@@ -84,11 +85,12 @@ export default function TaskContextPane({
             <DateDisplay date={task.created} />
           </dd>
         </div>
-        {task.member_verdict_date && (
+        {task.member_verdict && (
           <div>
             <dt>{t('tasks.member_verdict')}</dt>
-            <dd>
-              <DateDisplay date={task.member_verdict_date} />
+            <dd className="task-context-verdict">
+              <StatusBadge status={task.member_verdict} />
+              {task.member_verdict_date && <DateDisplay date={task.member_verdict_date} />}
             </dd>
           </div>
         )}

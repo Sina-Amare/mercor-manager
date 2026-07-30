@@ -15,6 +15,7 @@ import type { Task, TaskStatus } from '../../types';
 import { TASK_STATUSES, STATUS_CONFIG } from '../../types';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../../store';
 import StatusBadge from '../shared/StatusBadge';
+import VerdictChip from './VerdictChip';
 import DateDisplay from '../shared/DateDisplay';
 import CopyButton from '../shared/CopyButton';
 import ConfirmDialog from '../shared/ConfirmDialog';
@@ -436,7 +437,10 @@ export default function TaskTable({
                       </td>
                     )}
                     <td data-label={t('tasks.status')}>
-                      <StatusBadge status={task.status} />
+                      <div className="status-cell">
+                        <StatusBadge status={task.status} />
+                        <VerdictChip task={task} variant="stacked" />
+                      </div>
                     </td>
                     <td data-label={t('tasks.last_activity')}>
                       <span className={`task-age ${idle >= STALE_DAYS ? 'is-stale' : ''}`}>

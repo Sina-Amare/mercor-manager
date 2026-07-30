@@ -1,5 +1,5 @@
 import { Check, ChevronRight, X } from 'lucide-react';
-import type { TaskStatus } from '../../../types';
+import type { MemberVerdict, TaskStatus } from '../../../types';
 import { useLanguageStore } from '../../../store';
 import { formatNumber } from '../../../utils/dates';
 import { isNegativeOutcome, type Stage } from '../../../workflow';
@@ -26,6 +26,8 @@ function currentStepIndex(status: TaskStatus): number {
 
 interface Props {
   status: TaskStatus;
+  /** Names step 3 after what was actually submitted, once it is known. */
+  verdict?: MemberVerdict | '';
   onSelectStage: (stage: Stage) => void;
   activeStage: Stage;
 }
@@ -36,7 +38,7 @@ interface Props {
  * colour instead of painting the remaining steps as completed — failing used to
  * look identical to finishing.
  */
-export default function LifecycleStepper({ status, onSelectStage, activeStage }: Props) {
+export default function LifecycleStepper({ status, verdict, onSelectStage, activeStage }: Props) {
   const { t, language } = useLanguageStore();
   const current = currentStepIndex(status);
   const failed = isNegativeOutcome(status);
@@ -47,6 +49,12 @@ export default function LifecycleStepper({ status, onSelectStage, activeStage }:
         const isCurrent = index === current;
         const isDone = index < current;
         const state = isCurrent ? (failed ? 'failed' : 'active') : isDone ? 'completed' : 'upcoming';
+        // Once a verdict exists, the third step says which one rather than the
+        // generic word — that is the fact people are looking for.
+        const label =
+          step.statuses.includes('swf') && verdict
+            ? t(`status.${verdict}`)
+            : t(step.labelKey);
 
         return (
           <li key={step.labelKey} className="stepper-item">
@@ -74,7 +82,7 @@ export default function LifecycleStepper({ status, onSelectStage, activeStage }:
                   formatNumber(index + 1, language)
                 )}
               </span>
-              <span className="stepper-label">{t(step.labelKey)}</span>
+              <span className="stepper-label">{label}</span>
             </button>
           </li>
         );
