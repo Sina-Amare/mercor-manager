@@ -124,11 +124,15 @@ export default function Prompts() {
       }
     );
 
-    // Realtime plus focus/visibility reconcile; no background poll.
+    // Realtime plus a slow backstop, matching the task subscription.
     const handleFocus = () => void refresh();
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') void refresh();
     };
+
+    const backstop = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh();
+    }, 60_000);
 
     void refresh();
     window.addEventListener('focus', handleFocus);
@@ -137,6 +141,7 @@ export default function Prompts() {
 
     return () => {
       active = false;
+      window.clearInterval(backstop);
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('online', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);

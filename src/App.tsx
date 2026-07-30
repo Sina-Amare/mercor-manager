@@ -14,6 +14,10 @@ import {
 import AppShell from './components/layout/AppShell';
 import { MEMBER_ACTIVE_STATUSES, TASK_STATUSES } from './types';
 
+// Backstop reconcile interval. Realtime does the real work; this only catches
+// the case where it has silently stopped delivering.
+const RECONCILE_MS = 60_000;
+
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const UploadTasks = lazy(() => import('./pages/UploadTasks'));
@@ -196,13 +200,19 @@ function AppContent() {
       }
     );
 
-    // Realtime delivers changes; focus, visibility and reconnect cover anything
-    // a dropped socket missed. A 4-second poll used to run on top of all of
-    // this, re-reading every task body ~15 times a minute in every open tab.
     const handleFocus = () => void refreshTasks();
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') void refreshTasks();
     };
+    // Realtime is the delivery mechanism; this is the backstop for when it
+    // silently stops — a slept laptop, a dropped socket, a broken publication.
+    // The original 4-second poll cost ~15 full table reads a minute per tab and
+    // masked exactly that class of fault. Removing it entirely was worse: a
+    // stale screen with no upper bound. A minute caps the damage for 1/15th of
+    // the traffic.
+    const backstop = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshTasks();
+    }, RECONCILE_MS);
 
     window.addEventListener('focus', handleFocus);
     window.addEventListener('online', handleFocus);
@@ -210,6 +220,7 @@ function AppContent() {
 
     return () => {
       active = false;
+      window.clearInterval(backstop);
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('online', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
@@ -370,6 +381,9 @@ function AppContent() {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refreshSharedData();
     };
+    const backstop = window.setInterval(() => {
+      if (document.visibilityState === 'visible') refreshSharedData();
+    }, RECONCILE_MS);
 
     window.addEventListener('focus', refreshSharedData);
     window.addEventListener('online', refreshSharedData);
@@ -377,6 +391,7 @@ function AppContent() {
 
     return () => {
       active = false;
+      window.clearInterval(backstop);
       window.removeEventListener('focus', refreshSharedData);
       window.removeEventListener('online', refreshSharedData);
       document.removeEventListener('visibilitychange', handleVisibility);
