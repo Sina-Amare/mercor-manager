@@ -60,8 +60,13 @@ export default function Settings() {
   const [showPassword, setShowPassword] = useState(false);
   const [formRole, setFormRole] = useState<'admin' | 'member'>('member');
 
+  // Do not overwrite a rate somebody is mid-way through typing when another
+  // admin's change arrives.
+  const rateEditingRef = useRef(false);
+  rateEditingRef.current = rate !== settings.usd_to_irr_rate;
+
   useEffect(() => {
-    setRate(settings.usd_to_irr_rate);
+    if (!rateEditingRef.current) setRate(settings.usd_to_irr_rate);
   }, [settings.usd_to_irr_rate]);
 
   const rateDirty = rate !== settings.usd_to_irr_rate;

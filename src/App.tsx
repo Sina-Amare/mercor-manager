@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from './store';
 import { initAuth, logout as signOut } from './api/auth';
 import {
@@ -13,6 +13,7 @@ import {
 } from './api/tasks';
 import AppShell from './components/layout/AppShell';
 import { MEMBER_ACTIVE_STATUSES, TASK_STATUSES } from './types';
+import { rememberRoute } from './utils/lastRoute';
 
 // Backstop reconcile interval. Realtime does the real work; this only catches
 // the case where it has silently stopped delivering.
@@ -40,8 +41,24 @@ function LoadingScreen() {
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    const path = location.pathname + location.search;
+    rememberRoute(path);
+    return <Navigate to="/login" replace state={{ from: path }} />;
+  }
   return <>{children}</>;
+}
+
+/** Keeps the remembered route current while signed in. */
+function RouteMemory() {
+  const location = useLocation();
+  const { isAuthenticated } = useAuthStore();
+  useEffect(() => {
+    if (isAuthenticated) rememberRoute(location.pathname + location.search);
+  }, [isAuthenticated, location.pathname, location.search]);
+  return null;
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
@@ -415,6 +432,7 @@ function AppContent() {
 
   return (
     <Suspense fallback={<LoadingScreen />}>
+      <RouteMemory />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route

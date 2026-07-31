@@ -3308,3 +3308,25 @@ body {
   gap: var(--space-2);
   margin-block-start: var(--space-1);
 }
+
+/* ─── Auto-save indicator ────────────────────────────────────────────────── */
+.save-indicator {
+  align-items: center;
+  color: var(--color-text-secondary);
+  display: flex;
+  font-size: var(--text-xs);
+  gap: var(--space-2);
+}
+
+.save-indicator.is-saved {
+  color: var(--color-success);
+}
+
+.save-indicator.is-pending {
+  color: var(--color-text-tertiary);
+}
+
+.save-indicator.is-error {
+  color: var(--color-danger);
+  flex-wrap: wrap;
+}

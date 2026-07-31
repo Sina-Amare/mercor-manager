@@ -20,6 +20,8 @@ export interface ApplyOptions {
    * a draft save passes the version its edits started from instead.
    */
   expectedUpdated?: string;
+  /** Suppresses the success toast. Auto-saves should not narrate themselves. */
+  silent?: boolean;
 }
 
 /**
@@ -86,11 +88,15 @@ export function useTaskActions(task: Task, onTaskGone?: () => void) {
               }
             : undefined;
 
-        addToast(options.success ?? t('tasks.saved'), 'success', offerUndo);
+        if (!options.silent) addToast(options.success ?? t('tasks.saved'), 'success', offerUndo);
         return updated;
       } catch (error) {
         if (error instanceof TaskConflictError) {
           handleConflict(error);
+        } else if (options.silent) {
+          // The save indicator already shows the failure; a toast per keystroke
+          // burst would be noise.
+          console.error('Auto-save failed:', error);
         } else {
           addToast(
             options.error ||

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CheckCircle, Info, RotateCcw, Save } from 'lucide-react';
 import type { AppSettings, Task } from '../../../types';
 import { useLanguageStore } from '../../../store';
@@ -27,8 +27,14 @@ export default function PaymentPanel({
   const { t, language } = useLanguageStore();
   const [usd, setUsd] = useState(task.payment_amount_usd || 0);
 
+  // Amounts stay an explicit save — auto-saving a half-typed number would
+  // record "1" on the way to "18". But a background refresh must not overwrite
+  // what is being typed either.
+  const editingRef = useRef(false);
+  editingRef.current = usd !== (task.payment_amount_usd || 0);
+
   useEffect(() => {
-    setUsd(task.payment_amount_usd || 0);
+    if (!editingRef.current) setUsd(task.payment_amount_usd || 0);
   }, [task.id, task.payment_amount_usd]);
 
   const isPaid = task.payment_status === 'paid';

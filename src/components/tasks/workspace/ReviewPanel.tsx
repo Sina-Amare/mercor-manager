@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { EyeOff, Save } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Check, EyeOff, Loader2 } from 'lucide-react';
 import type { Task } from '../../../types';
 import { useLanguageStore } from '../../../store';
 import StatusBadge from '../../shared/StatusBadge';
@@ -10,18 +10,36 @@ interface Props {
   task: Task;
   isAdmin: boolean;
   onSaveNotes: (notes: string) => Promise<void>;
-  saving: boolean;
 }
 
-export default function ReviewPanel({ task, isAdmin, onSaveNotes, saving }: Props) {
+export default function ReviewPanel({ task, isAdmin, onSaveNotes }: Props) {
   const { t } = useLanguageStore();
   const [notes, setNotes] = useState(task.admin_notes || '');
+  const [notesState, setNotesState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const notesDirty = notes !== (task.admin_notes || '');
+  const dirtyRef = useRef(false);
+  dirtyRef.current = notesDirty;
 
+  // Adopt the server value only when we are not mid-edit. Unconditionally
+  // syncing here wiped whatever the admin was typing the moment any Realtime
+  // update for this task arrived.
   useEffect(() => {
-    setNotes(task.admin_notes || '');
+    if (!dirtyRef.current) setNotes(task.admin_notes || '');
   }, [task.admin_notes, task.id]);
 
-  const notesDirty = notes !== (task.admin_notes || '');
+  const persist = useCallback(async () => {
+    if (!dirtyRef.current) return;
+    setNotesState('saving');
+    await onSaveNotes(notes);
+    setNotesState('saved');
+  }, [notes, onSaveNotes]);
+
+  // Same auto-save contract as the shared fields — no button to forget.
+  useEffect(() => {
+    if (!isAdmin || !notesDirty) return;
+    const timer = window.setTimeout(() => void persist(), 1200);
+    return () => window.clearTimeout(timer);
+  }, [isAdmin, notes, notesDirty, persist]);
 
   return (
     <div className="stage-panel">
@@ -73,14 +91,26 @@ export default function ReviewPanel({ task, isAdmin, onSaveNotes, saving }: Prop
             dir="auto"
           />
           <div className="stage-panel-actions">
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => void onSaveNotes(notes)}
-              disabled={saving || !notesDirty}
+            <p
+              className={`save-indicator ${
+                notesDirty
+                  ? 'is-pending'
+                  : notesState === 'saved'
+                    ? 'is-saved'
+                    : 'is-idle'
+              }`}
+              role="status"
             >
-              <Save size={14} aria-hidden="true" />
-              {t('common.save')}
-            </button>
+              {notesState === 'saving' && <Loader2 size={14} className="spin" aria-hidden="true" />}
+              {!notesDirty && notesState === 'saved' && <Check size={14} aria-hidden="true" />}
+              {notesState === 'saving'
+                ? t('tasks.autosave_saving')
+                : notesDirty
+                  ? t('tasks.autosave_pending')
+                  : notesState === 'saved'
+                    ? t('tasks.autosave_saved')
+                    : t('tasks.autosave_idle')}
+            </p>
           </div>
         </div>
       ) : task.status === 'sent_back' && task.admin_notes?.trim() ? (

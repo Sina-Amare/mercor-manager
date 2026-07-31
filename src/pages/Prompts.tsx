@@ -18,6 +18,7 @@ import {
   fetchPrompts,
   subscribeToPrompts,
   updatePrompt,
+  PromptConflictError,
 } from '../api/prompts';
 import type { PromptVisibility, SavedPrompt } from '../types';
 import DateDisplay from '../components/shared/DateDisplay';
@@ -198,7 +199,8 @@ export default function Prompts() {
         ? await updatePrompt(
             editingPrompt.id,
             { title: formTitle, body: formBody },
-            user
+            user,
+            editingPrompt.updated
           )
         : await createPrompt(
             { title: formTitle, body: formBody, visibility: editorVisibility },
@@ -215,8 +217,11 @@ export default function Prompts() {
       setFormTitle('');
       setFormBody('');
     } catch (error) {
-      const message = error instanceof Error ? error.message : t('prompts.save_error');
-      addToast(message, 'error');
+      if (error instanceof PromptConflictError) {
+        addToast(t('prompts.conflict'), 'warning');
+      } else {
+        addToast(error instanceof Error ? error.message : t('prompts.save_error'), 'error');
+      }
     } finally {
       setSaving(false);
     }

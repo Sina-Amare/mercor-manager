@@ -146,7 +146,6 @@
     "studio_workflow_title": "Studio verification",
     "studio_workflow_admin_help": "Complete or verify the fields, add a shared note, then use Submit for Review. Saving a draft keeps the task In Studio.",
     "studio_workflow_member_help": "This task is still In Studio. You can update the shared fields while the admin tests it.",
-    "save_draft": "Save draft",
     "review_note_required": "Add a note before submitting this task for review.",
     "submit_for_review_confirm": "Save these Studio fields and submit the task for review? The status will change from In Studio to In Review.",
     "submitted_for_review": "Studio details saved and task submitted for review",
@@ -166,8 +165,8 @@
     "action_needed": "Waiting for action",
     "unsaved": "Unsaved changes",
     "unsaved_included": "Your unsaved edits are saved along with this action.",
-    "leave_unsaved_title": "Leave with unsaved changes?",
-    "leave_unsaved_help": "Your draft is kept on this device, but it has not been shared with the team yet.",
+    "leave_unsaved_title": "Leave with an unsaved change?",
+    "leave_unsaved_help": "The last edit could not be saved to the server. It is still on this device, but nobody else can see it.",
     "leave_anyway": "Leave anyway",
     "saved": "Saved",
     "undone": "Change undone",
@@ -240,7 +239,13 @@
     "field_studio_result": "studio result",
     "field_deleted_at": "recycle bin",
     "field_created": "created",
-    "submitted_as": "Submitted as"
+    "submitted_as": "Submitted as",
+    "autosave_saving": "Saving…",
+    "autosave_saved": "Saved",
+    "autosave_pending": "Unsaved — saving shortly",
+    "autosave_idle": "Changes save automatically",
+    "autosave_failed": "Could not save — your text is safe on this device",
+    "autosave_retry": "Try again"
   },
   "upload": {
     "title": "Upload Tasks",
@@ -428,7 +433,8 @@
     "delete_error": "Could not delete the prompt",
     "load_error": "Could not load prompts",
     "delete_title": "Delete prompt?",
-    "delete_question": "This prompt will be permanently removed:"
+    "delete_question": "This prompt will be permanently removed:",
+    "conflict": "Somebody else edited this prompt while you had it open. Reopen it to see their version."
   },
   "common": {
     "save": "Save",

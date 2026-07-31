@@ -1,8 +1,9 @@
-import { AlertCircle, Save } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import type { Task } from '../../../types';
 import { useLanguageStore } from '../../../store';
 import FieldEditor from './FieldEditor';
-import type { Draft, DraftField } from './useTaskDraft';
+import SaveIndicator from './SaveIndicator';
+import type { Draft, DraftField, SaveState } from './useTaskDraft';
 
 interface Props {
   task: Task;
@@ -11,8 +12,9 @@ interface Props {
   canEdit: boolean;
   isAdmin: boolean;
   dirty: boolean;
-  onSave: () => void;
-  saving: boolean;
+  saveState: SaveState;
+  lastSavedAt: string | null;
+  onRetrySave: () => void;
 }
 
 export default function StudioPanel({
@@ -22,8 +24,9 @@ export default function StudioPanel({
   canEdit,
   isAdmin,
   dirty,
-  onSave,
-  saving,
+  saveState,
+  lastSavedAt,
+  onRetrySave,
 }: Props) {
   const { t } = useLanguageStore();
   const inStudio = task.status === 'in_studio';
@@ -91,10 +94,12 @@ export default function StudioPanel({
 
       {canEdit && (
         <div className="stage-panel-actions">
-          <button className="btn btn-secondary btn-sm" onClick={onSave} disabled={saving || !dirty}>
-            <Save size={14} aria-hidden="true" />
-            {t('tasks.save_draft')}
-          </button>
+          <SaveIndicator
+            state={saveState}
+            dirty={dirty}
+            lastSavedAt={lastSavedAt}
+            onRetry={onRetrySave}
+          />
         </div>
       )}
     </div>

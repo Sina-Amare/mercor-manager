@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { useLanguageStore } from '../store';
 import { login as apiLogin } from '../api/auth';
+import { recallRoute } from '../utils/lastRoute';
 import type { Language } from '../types';
 
 export default function Login() {
@@ -13,6 +14,15 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const { t, language, setLanguage } = useLanguageStore();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Back to whatever they were looking at when the session ended. Router state
+  // covers the same-tab case; localStorage covers a reload or a new tab.
+  const returnTo = (() => {
+    const fromState = (location.state as { from?: string } | null)?.from;
+    if (fromState) return fromState;
+    return recallRoute();
+  })();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -21,7 +31,7 @@ export default function Login() {
 
     try {
       await apiLogin(username, password);
-      navigate('/');
+      navigate(returnTo, { replace: true });
     } catch (err) {
       // Credential failures stay generic; an inactive account is worth naming
       // so the member contacts an admin instead of retrying their password.

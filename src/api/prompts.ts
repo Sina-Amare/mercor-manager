@@ -81,10 +81,19 @@ export async function createPrompt(
   return data as SavedPrompt;
 }
 
+export class PromptConflictError extends Error {
+  constructor() {
+    super('Prompt changed on another device');
+    this.name = 'PromptConflictError';
+  }
+}
+
 export async function updatePrompt(
   id: string,
   updates: { title: string; body: string },
-  actor: User
+  actor: User,
+  /** Version the edit started from. Omitted only by callers with no baseline. */
+  expectedUpdated?: string
 ): Promise<SavedPrompt> {
   const title = updates.title.trim();
   const body = updates.body.trim();
@@ -103,14 +112,18 @@ export async function updatePrompt(
     throw new Error('Only the prompt creator can edit this prompt');
   }
 
-  const { data, error } = await supabase
+  // Guard on the version the editor opened, so a second editor's save is
+  // refused instead of quietly overwriting the first.
+  let query = supabase
     .from('prompts')
     .update({ title, body, updated: new Date().toISOString() })
-    .eq('id', id)
-    .select(PROMPT_FIELDS)
-    .single();
+    .eq('id', id);
+  if (expectedUpdated) query = query.eq('updated', expectedUpdated);
+
+  const { data, error } = await query.select(PROMPT_FIELDS).maybeSingle();
 
   if (error) throw promptError('Updating prompt', error);
+  if (!data) throw new PromptConflictError();
   return data as SavedPrompt;
 }
 

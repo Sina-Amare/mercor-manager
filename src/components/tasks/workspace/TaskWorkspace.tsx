@@ -50,8 +50,17 @@ export default function TaskWorkspace({ task, onClose }: Props) {
   const { members, settings } = useAppStore();
   const isAdmin = user?.role === 'admin';
 
-  const draft = useTaskDraft(task);
   const { apply, saving } = useTaskActions(task, onClose);
+  const editable = canEditSubmission(task, user);
+
+  // The draft hook writes on its own; this is the writer it calls.
+  const persistDraft = useCallback(
+    (patch: Partial<Task>, baseUpdated: string) =>
+      apply(patch, { silent: true, expectedUpdated: baseUpdated }),
+    [apply]
+  );
+
+  const draft = useTaskDraft(task, { canEdit: editable, onSave: persistDraft });
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
 
   const [stage, setStage] = useState<Stage>(() => STAGE_OF_STATUS[task.status]);
@@ -71,7 +80,6 @@ export default function TaskWorkspace({ task, onClose }: Props) {
     [members]
   );
 
-  const editable = canEditSubmission(task, user);
   const transitions = availableTransitions(task, user);
   const reached = stageRank(task.status);
 
@@ -97,16 +105,20 @@ export default function TaskWorkspace({ task, onClose }: Props) {
     if ('studio_result' in patch || 'submission_notes' in patch) dirtyStages.push('studio');
   }
 
-  // ── Leaving with unsaved work ──────────────────────────────────────────────
+  // ── Leaving with work that failed to save ─────────────────────────────────
+  // Edits are written about a second after typing stops, so 'dirty' is normally
+  // a blink. Only an actual save failure is worth interrupting somebody over.
+  const atRisk = draft.dirty && draft.saveState === 'error';
+
   useEffect(() => {
-    if (!draft.dirty) return;
+    if (!atRisk) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [draft.dirty]);
+  }, [atRisk]);
 
   const handleClose = useCallback(() => {
-    if (!draft.dirty) {
+    if (!atRisk) {
       onClose();
       return;
     }
@@ -117,18 +129,7 @@ export default function TaskWorkspace({ task, onClose }: Props) {
       tone: 'warning',
       run: onClose,
     });
-  }, [draft.dirty, onClose, t]);
-
-  // ── Saving the shared fields ───────────────────────────────────────────────
-  const saveDraft = useCallback(async () => {
-    if (!draft.dirty) return;
-    const updated = await apply(draft.patch(), {
-      success: t('tasks.submission_saved'),
-      error: t('tasks.submission_save_error'),
-      expectedUpdated: draft.baseUpdated,
-    });
-    if (updated) draft.markSaved(updated);
-  }, [apply, draft, t]);
+  }, [atRisk, onClose, t]);
 
   // ── Moving the task ────────────────────────────────────────────────────────
   const runTransition = useCallback(
@@ -351,7 +352,9 @@ export default function TaskWorkspace({ task, onClose }: Props) {
                 dirty={draft.dirty}
                 remoteChanged={draft.remoteChanged}
                 onLoadLatest={draft.loadLatest}
-                onSave={() => void saveDraft()}
+                saveState={draft.saveState}
+                lastSavedAt={draft.lastSavedAt}
+                onRetrySave={() => void draft.saveNow()}
                 saving={saving}
               />
             )}
@@ -363,8 +366,9 @@ export default function TaskWorkspace({ task, onClose }: Props) {
                 canEdit={editable && Boolean(isAdmin)}
                 isAdmin={Boolean(isAdmin)}
                 dirty={draft.dirty}
-                onSave={() => void saveDraft()}
-                saving={saving}
+                saveState={draft.saveState}
+                lastSavedAt={draft.lastSavedAt}
+                onRetrySave={() => void draft.saveNow()}
               />
             )}
             {stage === 'review' && (
@@ -372,7 +376,6 @@ export default function TaskWorkspace({ task, onClose }: Props) {
                 task={task}
                 isAdmin={Boolean(isAdmin)}
                 onSaveNotes={saveNotes}
-                saving={saving}
               />
             )}
             {stage === 'payment' && (
