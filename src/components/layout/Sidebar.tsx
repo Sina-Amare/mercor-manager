@@ -8,7 +8,6 @@ import {
   Settings,
   LogOut,
   ClipboardList,
-  Hammer,
   Wallet,
   Menu,
   X,
@@ -21,7 +20,8 @@ import { logout } from '../../api/auth';
 import { useEffect, useState } from 'react';
 import { formatNumber } from '../../utils/dates';
 import ConfirmDialog from '../shared/ConfirmDialog';
-import { MEMBER_ACTIVE_STATUSES } from '../../types';
+import QueueNav from './QueueNav';
+import { queuesFor } from '../../queues';
 
 export default function Sidebar() {
   const { user } = useAuthStore();
@@ -168,6 +168,13 @@ export default function Sidebar() {
               </ul>
             </div>
 
+            <QueueNav
+              queues={queuesFor(user)}
+              tasks={tasks}
+              user={user}
+              title={t('queues.section_admin')}
+            />
+
             {/* Team Members Collapsible */}
             <div className="sidebar-section">
               <button
@@ -248,23 +255,7 @@ export default function Sidebar() {
                     {t('nav.my_tasks')}
                     <span className="sidebar-link-badge">
                       {formatNumber(
-                        tasks.filter((t) => t.assigned_to === user?.id).length,
-                        language
-                      )}
-                    </span>
-                  </NavLink>
-                </li>
-                <li>
-                  <NavLink to="/working" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                    <Hammer size={18} className="sidebar-link-icon" />
-                    {t('nav.working')}
-                    <span className="sidebar-link-badge">
-                      {formatNumber(
-                        tasks.filter(
-                          (t) =>
-                            t.assigned_to === user?.id &&
-                            MEMBER_ACTIVE_STATUSES.includes(t.status)
-                        ).length,
+                        tasks.filter((task) => task.assigned_to === user?.id).length,
                         language
                       )}
                     </span>
@@ -278,6 +269,13 @@ export default function Sidebar() {
                 </li>
               </ul>
             </div>
+
+            <QueueNav
+              queues={queuesFor(user)}
+              tasks={tasks}
+              user={user}
+              title={t('queues.section_member')}
+            />
 
             <div className="sidebar-section" style={{ marginTop: 'auto' }}>
               <div className="sidebar-section-title">{t('nav.financials')}</div>

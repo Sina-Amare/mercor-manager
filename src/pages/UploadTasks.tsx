@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Upload as UploadIcon, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import { Upload as UploadIcon, CheckCircle2, AlertTriangle, Loader2, Wand2, X } from 'lucide-react';
 import { useLanguageStore, useAppStore, useToastStore } from '../store';
 import { createTask, checkDuplicateTaskId } from '../api/tasks';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import { detectTaskId, normalizeTaskIdInput } from '../utils/taskId';
 
 export default function UploadTasks() {
   const { t } = useLanguageStore();
@@ -14,6 +15,12 @@ export default function UploadTasks() {
   const [assignTo, setAssignTo] = useState('');
   const [loading, setLoading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  // Tracks whether the ID in the field was found in the pasted body rather than
+  // typed. Only an auto-filled value may be replaced by a later paste; anything
+  // typed by hand is left alone.
+  const [detected, setDetected] = useState<{ id: string; candidates: number } | null>(null);
+  const taskIdIsAuto = detected !== null && detected.id === taskId;
 
   // Duplicate detection state
   const [dupStatus, setDupStatus] = useState<'idle' | 'checking' | 'new' | 'duplicate'>('idle');
@@ -89,6 +96,27 @@ export default function UploadTasks() {
     };
   }, [taskId, checkDuplicate, localCheck]);
 
+  // Pull the ID out of whatever was pasted into the body.
+  const handleBodyChange = (value: string) => {
+    setBody(value);
+    if (taskId.trim() && !taskIdIsAuto) return; // never overwrite a typed ID
+
+    const found = detectTaskId(value);
+    if (found) {
+      setDetected({ id: found.id, candidates: found.candidates });
+      setTaskId(found.id);
+    } else if (taskIdIsAuto) {
+      setDetected(null);
+      setTaskId('');
+    }
+  };
+
+  const handleTaskIdChange = (value: string) => {
+    // Pasting the whole task page into this field should still leave just the ID.
+    setTaskId(normalizeTaskIdInput(value));
+    setDetected(null);
+  };
+
   const handleOpenConfirm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskId.trim() || !body.trim() || !assignTo) return;
@@ -159,10 +187,38 @@ export default function UploadTasks() {
               className="form-input input-mono"
               placeholder={t('upload.task_id_placeholder')}
               value={taskId}
-              onChange={(e) => setTaskId(e.target.value)}
+              onChange={(e) => handleTaskIdChange(e.target.value)}
               required
               autoFocus
             />
+
+            {/* Say where the ID came from. An input that fills itself with no
+                explanation is worse than one you have to fill in. */}
+            {taskIdIsAuto && (
+              <div className="task-id-detected" role="status">
+                <Wand2 size={14} aria-hidden="true" />
+                <span>
+                  {detected.candidates > 1
+                    ? t('upload.detected_ambiguous').replace(
+                        '{count}',
+                        String(detected.candidates)
+                      )
+                    : t('upload.detected')}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    setDetected(null);
+                    setTaskId('');
+                  }}
+                >
+                  <X size={13} aria-hidden="true" />
+                  {t('upload.detected_clear')}
+                </button>
+              </div>
+            )}
+
             {dupStatus !== 'idle' && (
               <div
                 role="status"
@@ -193,7 +249,7 @@ export default function UploadTasks() {
               className="form-textarea"
               placeholder={t('upload.body_placeholder')}
               value={body}
-              onChange={(e) => setBody(e.target.value)}
+              onChange={(e) => handleBodyChange(e.target.value)}
               required
               rows={6}
             />

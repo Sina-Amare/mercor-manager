@@ -30,6 +30,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const TaskWorkspace = lazy(() => import('./pages/TaskWorkspace'));
 const Prompts = lazy(() => import('./pages/Prompts'));
 const RecycleBin = lazy(() => import('./pages/RecycleBin'));
+const QueueView = lazy(() => import('./pages/QueueView'));
 
 function LoadingScreen() {
   return (
@@ -450,6 +451,9 @@ function AppContent() {
           <Route path="/member/:memberId" element={<AdminRoute><MemberView /></AdminRoute>} />
           <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
           <Route path="/recycle-bin" element={<AdminRoute><RecycleBin /></AdminRoute>} />
+
+          {/* Named work queues — the sidebar's sections point here. */}
+          <Route path="/queue/:queueId" element={<QueueView />} />
 
           {/* Shared Routes */}
           <Route path="/status/:status" element={<StatusView />} />

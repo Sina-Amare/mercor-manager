@@ -3330,3 +3330,66 @@ body {
   color: var(--color-danger);
   flex-wrap: wrap;
 }
+
+/* ─── Detected task ID hint ──────────────────────────────────────────────── */
+.task-id-detected {
+  align-items: center;
+  background: var(--color-info-bg);
+  border: 1px solid color-mix(in srgb, var(--color-info) 22%, transparent);
+  border-radius: var(--radius-full);
+  color: var(--color-info);
+  display: flex;
+  font-size: var(--text-xs);
+  gap: var(--space-2);
+  line-height: var(--leading-ui);
+  margin-block-start: var(--space-2);
+  padding: 0.3rem 0.5rem 0.3rem 0.75rem;
+}
+
+.task-id-detected > span {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ─── Queue navigation ────────────────────────────────────────────────────────
+   Named piles of work rather than a status filter you have to go and set. Zero
+   counts stay listed and dim, so the sections keep the same shape as work moves
+   through them and stay learnable. */
+.queue-link {
+  position: relative;
+}
+
+.queue-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-link.is-empty:not(.active) {
+  opacity: 0.55;
+}
+
+/* Something is sitting in a pile that is waiting on this person. */
+.queue-link.is-waiting {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.queue-link.is-waiting .sidebar-link-badge {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.queue-dot {
+  background: var(--color-primary);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  height: 6px;
+  width: 6px;
+}
+
+/* Keeps the labels aligned whether or not a row has the dot. */
+.queue-link:not(.is-waiting) .queue-label {
+  margin-inline-start: 14px;
+}

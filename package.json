@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint && node scripts/check-workflow-parity.mjs",
+    "lint": "oxlint && node scripts/check-workflow-parity.mjs && node scripts/check-task-id-detection.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

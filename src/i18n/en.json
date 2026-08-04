@@ -266,7 +266,10 @@
     "checking": "Checking...",
     "confirm_title": "Assign this task?",
     "confirm_body": "Create task {task} and assign it to {member}?",
-    "confirm_action": "Create and assign"
+    "confirm_action": "Create and assign",
+    "detected": "Task ID found in the pasted text",
+    "detected_ambiguous": "Task ID found in the pasted text — {count} were present, the labelled one was used",
+    "detected_clear": "Clear"
   },
   "members": {
     "title": "Team Members",
@@ -473,5 +476,39 @@
     "notifications": "Notifications",
     "dismiss": "Dismiss",
     "logout_unsaved": "You have unsaved task drafts on this device. Signing out leaves them here — they have not been shared with the team."
+  },
+  "queues": {
+    "section_admin": "Pipeline",
+    "section_member": "My queues",
+    "new": "New for me",
+    "new_help": "Assigned to you and not started yet",
+    "returned": "Sent back to me",
+    "returned_help": "An admin returned these for edits",
+    "in_progress": "In progress",
+    "in_progress_help": "Claimed and being worked on",
+    "submitted": "Submitted",
+    "submitted_help": "Your verdict is recorded, waiting on the team",
+    "with_team": "With the team",
+    "with_team_help": "On hold, in Studio, or in Review",
+    "finished": "Finished",
+    "finished_help": "Approved or rejected",
+    "awaiting_studio": "Awaiting Studio",
+    "awaiting_studio_help": "Members have submitted a verdict — pick these up",
+    "in_review": "In Review",
+    "in_review_help": "Waiting on your approve, send back or reject",
+    "in_studio": "In Studio",
+    "in_studio_help": "Being tested before review",
+    "on_hold": "On hold",
+    "on_hold_help": "Parked for now",
+    "not_started": "Not started",
+    "not_started_help": "Assigned but nobody has claimed them",
+    "active": "Being worked on",
+    "active_help": "Members are working on these now",
+    "approved": "Approved",
+    "approved_help": "Accepted work, payable",
+    "sent_back": "Sent back",
+    "sent_back_help": "Returned to the member for edits",
+    "rejected": "Rejected",
+    "rejected_help": "Not accepted, no payment"
   }
 }
