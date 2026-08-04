@@ -464,6 +464,8 @@
     "logout_title": "Log out of AGNUS?",
     "logout_question": "Are you sure you want to log out of this account?",
     "back": "Back",
+    "update_available": "A newer version of AGNUS has been released. Reload to get it — this tab is running an older build.",
+    "reload_now": "Reload",
     "account_inactive": "Your account is no longer active",
     "account_removed": "Your account was removed or deactivated",
     "next": "Next",

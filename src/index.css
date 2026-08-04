@@ -3394,6 +3394,63 @@ body {
   margin-inline-start: 14px;
 }
 
+/* ─── "You are running an old build" ─────────────────────────────────────────
+   Deliberately not dismissible and deliberately above the announcements: the
+   whole problem is a tab that looks perfectly fine and is not.
+
+   Sticky, not static, and that is the whole point. This appears at an arbitrary
+   moment mid-session — somebody who has been scrolled halfway down the task
+   list all morning would otherwise have it mounted above their viewport, where
+   scroll anchoring keeps everything looking exactly as it did. It fires once,
+   so a notice nobody sees is a notice that never happened. Sticking it below
+   the header means it is on screen wherever they happen to be. */
+.update-banner {
+  align-items: center;
+  background: var(--color-info-bg);
+  border: 1px solid color-mix(in srgb, var(--color-info) 32%, transparent);
+  border-inline-start: 4px solid var(--color-info);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  gap: var(--space-3);
+  margin: var(--space-5) var(--space-8) 0;
+  padding: var(--space-3) var(--space-5);
+  position: sticky;
+  top: calc(var(--header-height) + var(--space-3));
+  z-index: var(--z-header);
+}
+
+.update-banner-icon {
+  color: var(--color-info);
+  flex-shrink: 0;
+}
+
+.update-banner-text {
+  color: var(--color-text-primary);
+  flex: 1;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  margin: 0;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .update-banner {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin: var(--space-4) var(--space-4) 0;
+  }
+
+  /* `flex-wrap` alone does nothing here: `flex: 1` means a flex-basis of 0, so
+     the sentence has a hypothetical main size of zero and shrinks for ever
+     instead of pushing the button onto the next line — and .btn is
+     `white-space: nowrap`, so the button will not give way either. Claiming the
+     whole line is what actually wraps it. */
+  .update-banner-text {
+    flex-basis: 100%;
+  }
+}
+
 /* ─── Announcements ───────────────────────────────────────────────────────────
    A banner has to read as authoritative in whatever language it was written
    in, on a page whose own direction may be the opposite. */
