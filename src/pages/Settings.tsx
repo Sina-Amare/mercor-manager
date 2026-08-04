@@ -18,8 +18,16 @@ import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../s
 import { exportBackup, importBackup, updateSettings } from '../api/tasks';
 import { createUser, deleteUser, setUserActive, updateUser } from '../api/users';
 import ConfirmDialog, { type ConfirmTone } from '../components/shared/ConfirmDialog';
-import AnnouncementEditor from '../components/settings/AnnouncementEditor';
-import type { AnnouncementLevel, User } from '../types';
+import AnnouncementEditor, {
+  type AnnouncementDraft,
+} from '../components/settings/AnnouncementEditor';
+import {
+  createAnnouncement,
+  deleteAnnouncement,
+  fetchAnnouncements,
+  updateAnnouncement,
+} from '../api/announcements';
+import type { Announcement, User } from '../types';
 import { formatNumber } from '../utils/dates';
 
 type PendingConfirm = {
@@ -38,6 +46,8 @@ export default function Settings() {
     members,
     settings,
     setSettings,
+    announcements,
+    setAnnouncements,
     addMember,
     updateMember,
     removeMember,
@@ -112,51 +122,76 @@ export default function Settings() {
     });
   };
 
-  // ── Global announcement ────────────────────────────────────────────────────
-  // Publishing puts a message in front of every member, so it confirms and
-  // shows the exact text first. Taking one down cannot mislead anybody, so it
-  // does not.
-  const requestPublishAnnouncement = (text: string, level: AnnouncementLevel) => {
-    const message = text.trim();
-    if (!message) return;
+  // ── Announcements ──────────────────────────────────────────────────────────
+  // Publishing puts a message in front of somebody, so it confirms and shows
+  // the exact text and audience first. Editing and taking one down cannot
+  // mislead anybody, so neither asks.
+  const memberName = (id: string | null) =>
+    members.find((member) => member.id === id)?.name || t('announcement.unknown_member');
+
+  const requestPublishAnnouncement = (draft: AnnouncementDraft) => {
+    const message = draft.body.trim();
+    if (!message || !currentUser) return;
     setConfirm({
-      title: t('announcement.confirm_title'),
-      tone: level === 'critical' ? 'danger' : 'warning',
-      confirmLabel: t('announcement.publish'),
+      title: draft.targetUserId
+        ? t('announcement.confirm_title_one').replace('{name}', memberName(draft.targetUserId))
+        : t('announcement.confirm_title'),
+      tone: draft.level === 'critical' ? 'danger' : 'warning',
+      confirmLabel: t('common.confirm'),
       body: (
         <>
           <p className="confirm-copy">
-            {t('announcement.confirm_body').replace(
-              '{count}',
-              formatNumber(members.filter((member) => member.is_active).length, language)
-            )}
+            {draft.targetUserId
+              ? t('announcement.confirm_body_one').replace(
+                  '{name}',
+                  memberName(draft.targetUserId)
+                )
+              : t('announcement.confirm_body').replace(
+                  '{count}',
+                  formatNumber(members.filter((member) => member.is_active).length, language)
+                )}
           </p>
-          <aside className={`announcement announcement-${level} is-preview`} dir="auto">
-            <p className="announcement-text" dir="auto">
-              {message}
-            </p>
+          <aside
+            className={`announcement announcement-${draft.level} is-preview${
+              draft.targetUserId ? ' is-personal' : ''
+            }`}
+            dir="auto"
+          >
+            {/* No `dir` on the paragraph: it would exclude the message from the
+                banner's own auto resolution. See AnnouncementBanner. */}
+            <p className="announcement-text">{message}</p>
           </aside>
         </>
       ),
       run: () =>
         run(async () => {
-          const updated = await updateSettings(settings.id, {
-            announcement_text: message,
-            announcement_level: level,
+          await createAnnouncement({
+            body: message,
+            level: draft.level,
+            targetUserId: draft.targetUserId,
+            createdBy: currentUser.id,
           });
-          setSettings(updated);
+          setAnnouncements(await fetchAnnouncements());
           addToast(t('announcement.published'), 'success');
         }),
     });
   };
 
-  const clearAnnouncement = () =>
+  const saveAnnouncement = (id: string, draft: AnnouncementDraft) =>
     run(async () => {
-      const updated = await updateSettings(settings.id, {
-        announcement_text: '',
-        announcement_level: 'info',
+      await updateAnnouncement(id, {
+        body: draft.body.trim(),
+        level: draft.level,
+        target_user_id: draft.targetUserId,
       });
-      setSettings(updated);
+      setAnnouncements(await fetchAnnouncements());
+      addToast(t('announcement.updated'), 'success');
+    });
+
+  const removeAnnouncement = (announcement: Announcement) =>
+    run(async () => {
+      await deleteAnnouncement(announcement.id);
+      setAnnouncements(await fetchAnnouncements());
       addToast(t('announcement.cleared'), 'success');
     });
 
@@ -374,10 +409,13 @@ export default function Settings() {
       </div>
 
       <AnnouncementEditor
-        settings={settings}
+        announcements={announcements}
+        members={members}
+        authorId={currentUser?.id || ''}
         busy={busy}
         onPublish={requestPublishAnnouncement}
-        onClear={clearAnnouncement}
+        onUpdate={saveAnnouncement}
+        onDelete={removeAnnouncement}
       />
 
       <div className="settings-grid section-gap">

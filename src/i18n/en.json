@@ -522,8 +522,12 @@
     "paid_admin_help": "Payment already recorded"
   },
   "announcement": {
-    "title": "Global announcement",
-    "help": "Shown at the top of every page for every signed-in member, until they dismiss it. Editing it brings it back for anyone who already closed it.",
+    "title": "Announcements",
+    "help": "Shown at the top of every page until it is dismissed. Send one to the whole team or to a single person. Editing a notice brings it back for anyone who already closed it.",
+    "audience": "Who sees this",
+    "audience_everyone": "Everyone",
+    "audience_everyone_help": "Every signed-in member sees it on every page.",
+    "audience_one_help": "Only {name} sees it. Nobody else can read it, on screen or over the wire.",
     "message": "Message",
     "placeholder": "Write in any language — the banner follows the direction of what you type.",
     "level": "Importance",
@@ -531,15 +535,26 @@
     "level_warning": "Important",
     "level_critical": "Urgent",
     "preview": "Exactly what the team will see",
+    "preview_one": "Exactly what {name} will see",
     "publish": "Publish to everyone",
-    "update": "Update the announcement",
+    "publish_one": "Send to {name}",
+    "update": "Save changes",
+    "edit": "Edit this announcement",
     "clear": "Take it down",
     "live": "Live",
+    "live_count": "{count} live",
+    "live_title": "Currently showing",
     "published": "Announcement published",
+    "updated": "Announcement updated",
     "cleared": "Announcement taken down",
+    "unknown_member": "a removed member",
     "confirm_title": "Publish to the whole team?",
+    "confirm_title_one": "Send this to {name}?",
     "confirm_body": "{count} active member(s) will see this at the top of every page.",
+    "confirm_body_one": "Only {name} will see this, at the top of every page.",
+    "for_you": "For you",
     "dismiss": "Dismiss announcement",
-    "aria_label": "Team announcement"
+    "aria_label": "Team announcement",
+    "aria_label_personal": "Announcement for you"
   }
 }

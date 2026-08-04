@@ -11,6 +11,7 @@ import {
   subscribeToUsers,
   subscribeToSettings,
 } from './api/tasks';
+import { fetchAnnouncements, subscribeToAnnouncements } from './api/announcements';
 import AppShell from './components/layout/AppShell';
 import { MEMBER_ACTIVE_STATUSES, TASK_STATUSES } from './types';
 import { rememberRoute } from './utils/lastRoute';
@@ -76,6 +77,7 @@ function AppContent() {
     setTrashedTasks,
     setMembers,
     setSettings,
+    setAnnouncements,
     addTask,
     removeTask,
     addTrashedTask,
@@ -104,11 +106,12 @@ function AppContent() {
     const loadData = async () => {
       try {
         const sessionUser = useAuthStore.getState().user;
-        const [tasks, trashedTasks, users, settings] = await Promise.all([
+        const [tasks, trashedTasks, users, settings, announcements] = await Promise.all([
           fetchTasks(),
           sessionUser?.role === 'admin' ? fetchDeletedTasks() : Promise.resolve([]),
           fetchAllUsers(),
           fetchSettings(),
+          fetchAnnouncements(),
         ]);
         if (!active) return;
         const freshUser = users.find((candidate) => candidate.id === sessionUser?.id);
@@ -122,6 +125,7 @@ function AppContent() {
         setTrashedTasks(trashedTasks);
         setMembers(users);
         setSettings(settings);
+        setAnnouncements(announcements);
       } catch (err) {
         console.error('Failed to load data:', err);
         if (active) addToast(t('common.sync_error'), 'error');
@@ -135,6 +139,7 @@ function AppContent() {
   }, [
     addToast,
     isAuthenticated,
+    setAnnouncements,
     setMembers,
     setSettings,
     setTasks,
@@ -342,6 +347,32 @@ function AppContent() {
       }
     };
 
+    // A handful of rows, so every event refetches rather than applying a
+    // payload: a DELETE on an RLS-filtered table carries only the primary key,
+    // and re-reading is both shorter and exactly right.
+    let announcementsRefreshInFlight = false;
+    let announcementsRefreshQueued = false;
+
+    const refreshAnnouncements = async () => {
+      if (announcementsRefreshInFlight) {
+        announcementsRefreshQueued = true;
+        return;
+      }
+      announcementsRefreshInFlight = true;
+      try {
+        const announcements = await fetchAnnouncements();
+        if (active) setAnnouncements(announcements);
+      } catch (error) {
+        console.error('Failed to synchronize announcements:', error);
+      } finally {
+        announcementsRefreshInFlight = false;
+        if (active && announcementsRefreshQueued) {
+          announcementsRefreshQueued = false;
+          void refreshAnnouncements();
+        }
+      }
+    };
+
     const handleSubscriptionStatus = (refresh: () => Promise<void>) => (status: string) => {
       if (
         status === 'SUBSCRIBED' ||
@@ -392,9 +423,17 @@ function AppContent() {
       handleSubscriptionStatus(refreshSettings)
     );
 
+    const unsubscribeAnnouncements = subscribeToAnnouncements(
+      () => {
+        if (active) void refreshAnnouncements();
+      },
+      handleSubscriptionStatus(refreshAnnouncements)
+    );
+
     const refreshSharedData = () => {
       void refreshUsers();
       void refreshSettings();
+      void refreshAnnouncements();
     };
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refreshSharedData();
@@ -415,12 +454,14 @@ function AppContent() {
       document.removeEventListener('visibilitychange', handleVisibility);
       unsubscribeUsers();
       unsubscribeSettings();
+      unsubscribeAnnouncements();
     };
   }, [
     addMember,
     addToast,
     isAuthenticated,
     removeMember,
+    setAnnouncements,
     setMembers,
     setSettings,
     t,

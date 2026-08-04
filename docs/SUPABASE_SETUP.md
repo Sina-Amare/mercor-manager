@@ -22,6 +22,7 @@ Apply in filename order through the SQL editor.
 | `20260735_server_authoritative_updated.sql` | `tasks.updated` stamped by the database | yes |
 | `20260736_global_announcement.sql` | Team-wide notice on `settings` | yes |
 | `20260737_close_public_access.sql` | RLS on `task_transitions`, private identity helpers, grants cut to what the client uses | yes |
+| `20260738_targeted_announcements.sql` | `announcements` table; replaces the notice columns on `settings` | with the build that reads it |
 
 ## The authentication cutover
 
@@ -86,6 +87,9 @@ key could set any status or payment on any task. Now:
 - **`task_transitions`** — the rulebook itself. RLS on, read-only for signed-in
   members, invisible to `anon`. The guardrail trigger is `security definer`, so
   it keeps reading the table no matter how tightly it is locked to clients.
+- **`announcements`** — a notice with `target_user_id` set reaches exactly one
+  person, and the policy is what enforces it: the row never leaves the database
+  for anybody else, over REST or over the Realtime socket. Only admins write.
 
 Every policy asks `private.current_app_user_id() is not null` before anything
 else. A Supabase Auth account is not an AGNUS account: a session with no active
@@ -131,7 +135,7 @@ select tgenabled from pg_trigger where tgname = 'tasks_enforce_transition';
 
 ## Realtime
 
-Confirm `tasks` and `prompts` appear under **Database → Publications →
-supabase_realtime**. The app subscribes after sign-in and reconciles the full
+Confirm `tasks`, `prompts` and `announcements` appear under **Database →
+Publications → supabase_realtime**. The app subscribes after sign-in and reconciles the full
 list on connect, reconnect, focus and visibility change, so a missed websocket
 event cannot leave a stale screen.

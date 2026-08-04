@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Language, User, Task, AppSettings, MemberStats } from '../types';
+import type {
+  Announcement,
+  AppSettings,
+  Language,
+  MemberStats,
+  Task,
+  User,
+} from '../types';
 import en from '../i18n/en.json';
 import fa from '../i18n/fa.json';
 
@@ -97,6 +104,11 @@ interface AppState {
   trashedTasks: Task[];
   members: User[];
   settings: AppSettings;
+  /**
+   * Only what this account is allowed to see. Row level security has already
+   * removed notices addressed to other people before they reach the browser.
+   */
+  announcements: Announcement[];
 
   // UI State
   selectedTaskIds: string[];
@@ -118,6 +130,7 @@ interface AppState {
   removeMember: (id: string) => void;
   
   setSettings: (settings: AppSettings) => void;
+  setAnnouncements: (announcements: Announcement[]) => void;
 
   // Actions - UI
   toggleTaskSelection: (id: string) => void;
@@ -134,9 +147,6 @@ const defaultSettings: AppSettings = {
   id: '1',
   usd_to_irr_rate: 580000,
   updated: new Date().toISOString(),
-  announcement_text: '',
-  announcement_level: 'info',
-  announcement_updated: null,
 };
 
 export const useAppStore = create<AppState>()((set, get) => ({
@@ -144,6 +154,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   trashedTasks: [],
   members: [],
   settings: defaultSettings,
+  announcements: [],
   selectedTaskIds: [],
   sidebarOpen: false,
 
@@ -295,6 +306,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
     })),
 
   setSettings: (settings) => set({ settings }),
+  setAnnouncements: (announcements) => set({ announcements }),
 
   toggleTaskSelection: (id) =>
     set((s) => ({
