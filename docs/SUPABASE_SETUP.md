@@ -156,3 +156,26 @@ Confirm `tasks`, `prompts` and `announcements` appear under **Database →
 Publications → supabase_realtime**. The app subscribes after sign-in and reconciles the full
 list on connect, reconnect, focus and visibility change, so a missed websocket
 event cannot leave a stale screen.
+
+## The admin-users function
+
+It runs with platform JWT verification **on**, so an unauthenticated call is
+rejected before it reaches any code, and `requireAdmin` then re-checks that the
+caller maps to an active admin. Confirmed against the deployed function:
+
+```
+no token      -> 401 UNAUTHORIZED_NO_AUTH_HEADER   (platform)
+member token  -> 403 Admins only                   (requireAdmin)
+admin token   -> reaches the action dispatch
+```
+
+`backfill` predates anybody having an Auth identity, so it cannot pass that
+gate — which is correct now that it has run. It is doubly closed:
+`MIGRATION_SECRET` is unset and returns 500. If it ever needs running again,
+redeploy with `--no-verify-jwt` for that call and put verification back
+afterwards.
+
+Redeploy the function whenever `public.users` gains a column the admin panel
+writes — `updateAccount` copies fields by name, so a column it does not know
+about is silently dropped and the control appears to work while changing
+nothing.
