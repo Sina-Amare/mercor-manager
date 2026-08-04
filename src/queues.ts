@@ -8,6 +8,11 @@ import type { Task, TaskStatus, User } from './types';
  * count, so "has anything new landed on me" is answered without opening
  * anything. Admins and members are shown different piles because they are
  * waiting on different things.
+ *
+ * The vocabulary is deliberate. Recording SWF or SWOF means the member has
+ * finished working on the task — it does not mean anything reached Studio, and
+ * calling that pile "Submitted" implied a handover that had not happened.
+ * "Submitted" is reserved for work an admin has sent out of Studio into Review.
  */
 export interface Queue {
   id: string;
@@ -15,12 +20,14 @@ export interface Queue {
   helpKey: string;
   statuses: readonly TaskStatus[];
   audience: 'admin' | 'member';
+  /** Narrows further by settlement, for the payment queues. */
+  payment?: 'paid' | 'unpaid';
   /** Piles that are waiting on this person, rather than on somebody else. */
   needsAction?: boolean;
 }
 
 export const QUEUES: readonly Queue[] = [
-  // ── What a member is waiting to do ──
+  // ── A member: what is on me ──
   {
     id: 'new',
     labelKey: 'queues.new',
@@ -45,28 +52,62 @@ export const QUEUES: readonly Queue[] = [
     audience: 'member',
   },
   {
-    id: 'submitted',
-    labelKey: 'queues.submitted',
-    helpKey: 'queues.submitted_help',
+    id: 'completed',
+    labelKey: 'queues.completed',
+    helpKey: 'queues.completed_help',
     statuses: ['swf', 'swof', 'member_discarded'],
     audience: 'member',
   },
+
+  // ── A member: where it is once it leaves them ──
   {
-    id: 'with-team',
-    labelKey: 'queues.with_team',
-    helpKey: 'queues.with_team_help',
-    statuses: ['on_hold', 'in_studio', 'in_review'],
+    id: 'member-in-studio',
+    labelKey: 'queues.member_in_studio',
+    helpKey: 'queues.member_in_studio_help',
+    statuses: ['on_hold', 'in_studio'],
     audience: 'member',
   },
   {
-    id: 'finished',
-    labelKey: 'queues.finished',
-    helpKey: 'queues.finished_help',
-    statuses: ['approved', 'admin_discarded'],
+    id: 'member-in-review',
+    labelKey: 'queues.member_in_review',
+    helpKey: 'queues.member_in_review_help',
+    statuses: ['in_review'],
+    audience: 'member',
+  },
+  {
+    id: 'member-approved',
+    labelKey: 'queues.member_approved',
+    helpKey: 'queues.member_approved_help',
+    statuses: ['approved'],
+    audience: 'member',
+  },
+  {
+    id: 'member-rejected',
+    labelKey: 'queues.member_rejected',
+    helpKey: 'queues.member_rejected_help',
+    statuses: ['admin_discarded'],
     audience: 'member',
   },
 
-  // ── What an admin is waiting to do ──
+  // ── A member: money ──
+  {
+    id: 'member-awaiting-payment',
+    labelKey: 'queues.awaiting_payment',
+    helpKey: 'queues.awaiting_payment_help',
+    statuses: ['approved'],
+    payment: 'unpaid',
+    audience: 'member',
+  },
+  {
+    id: 'member-paid',
+    labelKey: 'queues.paid',
+    helpKey: 'queues.paid_help',
+    statuses: ['approved'],
+    payment: 'paid',
+    audience: 'member',
+  },
+
+  // ── An admin: what is on me ──
   {
     id: 'awaiting-studio',
     labelKey: 'queues.awaiting_studio',
@@ -97,6 +138,8 @@ export const QUEUES: readonly Queue[] = [
     statuses: ['on_hold'],
     audience: 'admin',
   },
+
+  // ── An admin: what the team is doing ──
   {
     id: 'not-started',
     labelKey: 'queues.not_started',
@@ -111,6 +154,8 @@ export const QUEUES: readonly Queue[] = [
     statuses: ['working'],
     audience: 'admin',
   },
+
+  // ── An admin: outcomes ──
   {
     id: 'approved',
     labelKey: 'queues.approved',
@@ -132,6 +177,25 @@ export const QUEUES: readonly Queue[] = [
     statuses: ['admin_discarded'],
     audience: 'admin',
   },
+
+  // ── An admin: money ──
+  {
+    id: 'awaiting-payment',
+    labelKey: 'queues.awaiting_payment',
+    helpKey: 'queues.awaiting_payment_admin_help',
+    statuses: ['approved'],
+    payment: 'unpaid',
+    audience: 'admin',
+    needsAction: true,
+  },
+  {
+    id: 'paid',
+    labelKey: 'queues.paid',
+    helpKey: 'queues.paid_admin_help',
+    statuses: ['approved'],
+    payment: 'paid',
+    audience: 'admin',
+  },
 ];
 
 export function queuesFor(user: User | null): Queue[] {
@@ -148,6 +212,8 @@ export function findQueue(id: string | undefined): Queue | undefined {
 export function tasksInQueue(queue: Queue, tasks: Task[], user: User | null): Task[] {
   return tasks.filter((task) => {
     if (!queue.statuses.includes(task.status)) return false;
+    if (queue.payment === 'paid' && task.payment_status !== 'paid') return false;
+    if (queue.payment === 'unpaid' && task.payment_status === 'paid') return false;
     if (user?.role !== 'admin' && task.assigned_to !== user?.id) return false;
     return true;
   });

@@ -18,7 +18,8 @@ import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../s
 import { exportBackup, importBackup, updateSettings } from '../api/tasks';
 import { createUser, deleteUser, setUserActive, updateUser } from '../api/users';
 import ConfirmDialog, { type ConfirmTone } from '../components/shared/ConfirmDialog';
-import type { User } from '../types';
+import AnnouncementEditor from '../components/settings/AnnouncementEditor';
+import type { AnnouncementLevel, User } from '../types';
 import { formatNumber } from '../utils/dates';
 
 type PendingConfirm = {
@@ -110,6 +111,54 @@ export default function Settings() {
         }),
     });
   };
+
+  // ── Global announcement ────────────────────────────────────────────────────
+  // Publishing puts a message in front of every member, so it confirms and
+  // shows the exact text first. Taking one down cannot mislead anybody, so it
+  // does not.
+  const requestPublishAnnouncement = (text: string, level: AnnouncementLevel) => {
+    const message = text.trim();
+    if (!message) return;
+    setConfirm({
+      title: t('announcement.confirm_title'),
+      tone: level === 'critical' ? 'danger' : 'warning',
+      confirmLabel: t('announcement.publish'),
+      body: (
+        <>
+          <p className="confirm-copy">
+            {t('announcement.confirm_body').replace(
+              '{count}',
+              formatNumber(members.filter((member) => member.is_active).length, language)
+            )}
+          </p>
+          <aside className={`announcement announcement-${level} is-preview`} dir="auto">
+            <p className="announcement-text" dir="auto">
+              {message}
+            </p>
+          </aside>
+        </>
+      ),
+      run: () =>
+        run(async () => {
+          const updated = await updateSettings(settings.id, {
+            announcement_text: message,
+            announcement_level: level,
+          });
+          setSettings(updated);
+          addToast(t('announcement.published'), 'success');
+        }),
+    });
+  };
+
+  const clearAnnouncement = () =>
+    run(async () => {
+      const updated = await updateSettings(settings.id, {
+        announcement_text: '',
+        announcement_level: 'info',
+      });
+      setSettings(updated);
+      addToast(t('announcement.cleared'), 'success');
+    });
 
   // ── Backup ─────────────────────────────────────────────────────────────────
   const handleExport = () =>
@@ -324,7 +373,14 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="settings-grid">
+      <AnnouncementEditor
+        settings={settings}
+        busy={busy}
+        onPublish={requestPublishAnnouncement}
+        onClear={clearAnnouncement}
+      />
+
+      <div className="settings-grid section-gap">
         <section className="card">
           <div className="card-header">
             <h2 className="card-title">{t('settings.conversion_rate')}</h2>

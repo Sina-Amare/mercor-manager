@@ -83,10 +83,17 @@ export interface Task {
 
 // ─── Settings ────────────────────────────────────────────────────────────────
 
+export type AnnouncementLevel = 'info' | 'warning' | 'critical';
+
 export interface AppSettings {
   id: string;
   usd_to_irr_rate: number;
   updated: string;
+  /** Team-wide notice. Empty means nothing is being announced. */
+  announcement_text: string;
+  announcement_level: AnnouncementLevel;
+  /** Stamped by the database when the notice changes; dismissal keys on it. */
+  announcement_updated: string | null;
 }
 
 // ─── Saved Prompts ──────────────────────────────────────────────────────────

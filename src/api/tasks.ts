@@ -398,6 +398,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   id: 'settings_1',
   usd_to_irr_rate: 580000,
   updated: new Date().toISOString(),
+  announcement_text: '',
+  announcement_level: 'info',
+  announcement_updated: null,
 };
 
 export async function fetchSettings(): Promise<AppSettings> {

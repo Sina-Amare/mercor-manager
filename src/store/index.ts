@@ -134,6 +134,9 @@ const defaultSettings: AppSettings = {
   id: '1',
   usd_to_irr_rate: 580000,
   updated: new Date().toISOString(),
+  announcement_text: '',
+  announcement_level: 'info',
+  announcement_updated: null,
 };
 
 export const useAppStore = create<AppState>()((set, get) => ({
