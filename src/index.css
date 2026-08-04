@@ -3370,10 +3370,19 @@ body {
   opacity: 0.55;
 }
 
-/* Something is sitting in a pile that is waiting on this person. */
+/* Something is sitting in a pile that is waiting on this person.
+
+   The colour is scoped away from the active row deliberately. Both this and
+   `.sidebar-link.active` are two-class selectors, so they tie on specificity
+   and the later one — this one — used to win. `--color-text-primary` and
+   `--color-sidebar-active` are both #18181B, so the label of a selected queue
+   went black-on-black and read as an empty row with a dot and a badge. */
 .queue-link.is-waiting {
-  color: var(--color-text-primary);
   font-weight: var(--weight-semibold);
+}
+
+.queue-link.is-waiting:not(.active) {
+  color: var(--color-text-primary);
 }
 
 .queue-link.is-waiting .sidebar-link-badge {
