@@ -18,6 +18,10 @@ Apply in filename order through the SQL editor.
 | `20260730_auth_link_and_guardrails.sql` | `auth_user_id` link, identity helpers, transition table, audit trail | **yes — purely additive** |
 | `20260731_enable_rls.sql` | Ends anonymous access, enables RLS, turns on the guardrail trigger | **no — this is the cutover** |
 | `20260732_drop_legacy_passwords.sql` | Drops the browser-readable password column | after everyone has signed in |
+| `20260734_fix_realtime_delivery.sql` | Publication membership and `replica identity full` | yes |
+| `20260735_server_authoritative_updated.sql` | `tasks.updated` stamped by the database | yes |
+| `20260736_global_announcement.sql` | Team-wide notice on `settings` | yes |
+| `20260737_close_public_access.sql` | RLS on `task_transitions`, private identity helpers, grants cut to what the client uses | yes |
 
 ## The authentication cutover
 
@@ -79,6 +83,26 @@ key could set any status or payment on any task. Now:
   prompts plus your own.
 - **`users`** — readable column by column, and `password` is not in the list.
   All writes go through `admin-users` under the service role.
+- **`task_transitions`** — the rulebook itself. RLS on, read-only for signed-in
+  members, invisible to `anon`. The guardrail trigger is `security definer`, so
+  it keeps reading the table no matter how tightly it is locked to clients.
+
+Every policy asks `private.current_app_user_id() is not null` before anything
+else. A Supabase Auth account is not an AGNUS account: a session with no active
+row in `public.users` gets zero rows from every table, not a roster.
+
+The identity helpers live in schema `private`, which PostgREST does not expose.
+In `public` they were published as `/rest/v1/rpc/is_admin` and
+`/rest/v1/rpc/current_app_user_id` — they answer only about the caller, but an
+authorization primitive should not be an endpoint. New policies must call
+`private.is_admin()` / `private.current_app_user_id()`.
+
+Client roles hold exactly the privileges the app uses and nothing more —
+`anon` has none at all, and `authenticated` has no `TRUNCATE` anywhere, which
+matters because `TRUNCATE` is not subject to row level security. Default
+privileges in `public` are revoked from `anon`, so a table added later starts
+closed instead of inheriting a `grant all` nobody notices. That is exactly how
+`task_transitions` ended up world-writable.
 
 `public.task_transitions` and `src/workflow.ts` are the same rulebook written
 twice. `npm run lint` runs `scripts/check-workflow-parity.mjs`, which fails if

@@ -69,6 +69,55 @@ supabase.from('users').select('password')
 supabase.from('prompts').select('*')
 ```
 
+## Second pass — what the advisor found afterwards
+
+Supabase emailed a critical alert on 3 August 2026. Two live holes, both
+verified against the running project before and after the fix, both closed by
+`20260737_close_public_access.sql`.
+
+**`public.task_transitions` was world-writable.** The table was created by
+`20260730_auth_link_and_guardrails.sql`, *after* the migration that revoked
+anonymous access, so it silently inherited Supabase's default `grant all on
+tables to anon` and never had RLS enabled. Anyone holding the publishable key
+could read it, and — worse — `INSERT`, `UPDATE`, `DELETE` and `TRUNCATE` it.
+Deleting its rows makes `enforce_task_transition()` reject every status change
+in the panel; inserting a row widens what a member is allowed to do. Measured
+before the fix: `anon` read all 38 rows.
+
+**Self-registration was open.** `disable_signup` was `false`, and `users_select`,
+`settings_select` and `prompts_select` were written `using (true)` — meaning any
+`authenticated` role, and a Supabase Auth account is not an AGNUS account.
+Anyone could register through `/auth/v1/signup` and read the whole roster, every
+shared prompt and the settings row. Measured before the fix, with a session
+whose `sub` matched no `public.users` row: 4 users, 7 prompts, 1 settings row.
+Now 0, 0, 0 — every policy tests `private.current_app_user_id() is not null`
+first, and self-signup is off, so admin provisioning is the only way in.
+
+Also closed in the same migration:
+
+- **Identity helpers moved to schema `private`.** In `public` they were
+  published as `/rest/v1/rpc/is_admin` and `/rest/v1/rpc/current_app_user_id`.
+  They answer only about the caller, so nothing leaked, but an authorization
+  primitive has no business being an endpoint. PostgREST exposes `public` and
+  `graphql_public` only.
+- **Trigger functions are no longer callable over REST**, and the three that
+  carried a mutable `search_path` now pin it.
+- **Grants cut to what the client actually uses.** `anon` holds nothing;
+  `authenticated` lost `TRUNCATE` everywhere, which matters because `TRUNCATE`
+  bypasses row level security entirely.
+- **Default privileges in `public` revoked from `anon`** — the root cause. A
+  table added later now starts closed rather than inheriting a `grant all`
+  nobody notices.
+- Auth: self-signup disabled, minimum password length raised 6 → 8 to match
+  `MIN_PASSWORD_LENGTH` in the `admin-users` function.
+- Advisor performance lints: covering indexes on `tasks.assigned_to`,
+  `task_events.actor_id` and `prompts.created_by`; the duplicate
+  `users_auth_user_id_idx` dropped; `settings_write` split into
+  `settings_insert` / `settings_update` so `SELECT` is not matched by two
+  permissive policies.
+
+The security advisor now reports one item, below.
+
 ## Remaining limits
 
 - Personal prompts are scoped by policy, but any admin can read them. They are
@@ -77,6 +126,25 @@ supabase.from('prompts').select('*')
   session. `MIGRATION_SECRET` is unset, so that path is closed.
 - Backup export produces a plaintext JSON file containing all task bodies and
   submissions. Treat the downloaded file as sensitive.
+- **Leaked-password protection is off** and cannot be turned on: checking
+  passwords against HaveIBeenPwned requires a Pro plan, and the API refuses it
+  with a 402 on Free. This is the one item the security advisor still reports.
+  Until the project is upgraded, the minimum length of 8 is the only automatic
+  check — choosing passwords that are not reused elsewhere is manual.
+
+## Re-checking it
+
+`scripts/check-db-security.mjs` re-runs the whole thing against the live
+project: the Supabase advisors, then direct probes as `anon`, as a signed-in
+stranger with no AGNUS row, and as a real member. It needs a Supabase personal
+access token:
+
+```bash
+SUPABASE_ACCESS_TOKEN=sbp_… node scripts/check-db-security.mjs
+```
+
+It is deliberately not part of `npm run lint` — it talks to production and
+needs a credential no build should hold.
 
 ## Dependency advisory
 
