@@ -48,6 +48,11 @@ export interface User {
   is_active: boolean;
   created: string;
   updated: string;
+  /**
+   * Granted by an admin, one member at a time, and enforced by the insert
+   * policy on announcement_replies rather than by this flag. Admins always may.
+   */
+  can_reply_announcements?: boolean;
 }
 
 // ─── Task ────────────────────────────────────────────────────────────────────
@@ -103,6 +108,14 @@ export interface Announcement {
   created: string;
   /** Stamped by the database on every edit; dismissal keys on it. */
   updated: string;
+}
+
+export interface AnnouncementReply {
+  id: string;
+  announcement_id: string;
+  author_id: string;
+  body: string;
+  created: string;
 }
 
 // ─── Saved Prompts ──────────────────────────────────────────────────────────

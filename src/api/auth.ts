@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 import type { User } from '../types';
 import { useAuthStore } from '../store';
 
-const PROFILE_FIELDS = 'id,username,email,name,role,avatar,is_active,created,updated';
+const PROFILE_FIELDS = 'id,username,email,name,role,avatar,is_active,created,updated,can_reply_announcements';
 
 // Members sign in with the username they already know; the sign-in address is
 // derived from it, so there is no lookup table and no email disclosure. The

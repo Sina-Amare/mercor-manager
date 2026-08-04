@@ -43,9 +43,15 @@ export function updateUser(
     role?: 'admin' | 'member';
     password?: string;
     is_active?: boolean;
+    can_reply_announcements?: boolean;
   }
 ): Promise<User> {
   return callAdminUsers<User>('update', { id, ...input });
+}
+
+/** Who may answer an announcement. Admins always may; this is for members. */
+export function setCanReplyAnnouncements(id: string, canReply: boolean): Promise<User> {
+  return callAdminUsers<User>('update', { id, can_reply_announcements: canReply });
 }
 
 /** Reversible removal: the account can no longer sign in, history stays intact. */

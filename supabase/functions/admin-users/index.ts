@@ -21,7 +21,7 @@ const MIGRATION_SECRET = Deno.env.get('MIGRATION_SECRET') ?? '';
 
 const MIN_PASSWORD_LENGTH = 8;
 const USERNAME_PATTERN = /^[a-z0-9._-]{3,32}$/;
-const USER_FIELDS = 'id,username,email,name,role,avatar,is_active,created,updated';
+const USER_FIELDS = 'id,username,email,name,role,avatar,is_active,created,updated,can_reply_announcements';
 
 function admin(): SupabaseClient {
   return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
@@ -156,6 +156,13 @@ async function updateAccount(service: SupabaseClient, payload: Record<string, un
   }
   if (typeof payload.is_active === 'boolean') {
     updates.is_active = payload.is_active;
+  }
+  // Who may answer an announcement. It reaches the database only from here,
+  // under the service role, after the caller has been shown to be an admin —
+  // public.users has no client write policy, so a member cannot grant it to
+  // themselves however the request is shaped.
+  if (typeof payload.can_reply_announcements === 'boolean') {
+    updates.can_reply_announcements = payload.can_reply_announcements;
   }
 
   let nextUsername = current.username as string;

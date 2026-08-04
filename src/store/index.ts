@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type {
   Announcement,
+  AnnouncementReply,
   AppSettings,
   Language,
   MemberStats,
@@ -24,6 +25,10 @@ function publicUser(user: User): User {
     is_active: user.is_active,
     created: user.created,
     updated: user.updated,
+    // Drives whether the reply box is offered. Losing it here would hide the
+    // box from somebody who has the permission — the policy would still let
+    // them reply, but nothing in the interface would ever ask.
+    can_reply_announcements: user.can_reply_announcements ?? false,
   };
 }
 
@@ -109,6 +114,8 @@ interface AppState {
    * removed notices addressed to other people before they reach the browser.
    */
   announcements: Announcement[];
+  /** Same rule: an admin gets every reply, everybody else only their own. */
+  announcementReplies: AnnouncementReply[];
 
   // UI State
   selectedTaskIds: string[];
@@ -131,6 +138,7 @@ interface AppState {
   
   setSettings: (settings: AppSettings) => void;
   setAnnouncements: (announcements: Announcement[]) => void;
+  setAnnouncementReplies: (replies: AnnouncementReply[]) => void;
 
   // Actions - UI
   toggleTaskSelection: (id: string) => void;
@@ -155,6 +163,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   members: [],
   settings: defaultSettings,
   announcements: [],
+  announcementReplies: [],
   selectedTaskIds: [],
   sidebarOpen: false,
 
@@ -307,6 +316,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   setSettings: (settings) => set({ settings }),
   setAnnouncements: (announcements) => set({ announcements }),
+  setAnnouncementReplies: (announcementReplies) => set({ announcementReplies }),
 
   toggleTaskSelection: (id) =>
     set((s) => ({

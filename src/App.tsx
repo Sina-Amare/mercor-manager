@@ -11,7 +11,11 @@ import {
   subscribeToUsers,
   subscribeToSettings,
 } from './api/tasks';
-import { fetchAnnouncements, subscribeToAnnouncements } from './api/announcements';
+import {
+  fetchAnnouncements,
+  fetchAnnouncementReplies,
+  subscribeToAnnouncements,
+} from './api/announcements';
 import AppShell from './components/layout/AppShell';
 import { MEMBER_ACTIVE_STATUSES, TASK_STATUSES } from './types';
 import { rememberRoute } from './utils/lastRoute';
@@ -78,6 +82,7 @@ function AppContent() {
     setMembers,
     setSettings,
     setAnnouncements,
+    setAnnouncementReplies,
     addTask,
     removeTask,
     addTrashedTask,
@@ -106,12 +111,19 @@ function AppContent() {
     const loadData = async () => {
       try {
         const sessionUser = useAuthStore.getState().user;
-        const [tasks, trashedTasks, users, settings, announcements] = await Promise.all([
+        // Announcements are the least important thing on the screen, so they
+        // are not allowed to take the rest of it down with them. Promise.all
+        // rejects as a whole: without these catches, a deploy that reaches
+        // browsers before its migration does — or any transient failure on
+        // these two reads — leaves an empty panel with a sync error, no tasks
+        // and no roster, for a notice board.
+        const [tasks, trashedTasks, users, settings, announcements, replies] = await Promise.all([
           fetchTasks(),
           sessionUser?.role === 'admin' ? fetchDeletedTasks() : Promise.resolve([]),
           fetchAllUsers(),
           fetchSettings(),
-          fetchAnnouncements(),
+          fetchAnnouncements().catch(() => []),
+          fetchAnnouncementReplies().catch(() => []),
         ]);
         if (!active) return;
         const freshUser = users.find((candidate) => candidate.id === sessionUser?.id);
@@ -126,6 +138,7 @@ function AppContent() {
         setMembers(users);
         setSettings(settings);
         setAnnouncements(announcements);
+        setAnnouncementReplies(replies);
       } catch (err) {
         console.error('Failed to load data:', err);
         if (active) addToast(t('common.sync_error'), 'error');
@@ -139,6 +152,7 @@ function AppContent() {
   }, [
     addToast,
     isAuthenticated,
+    setAnnouncementReplies,
     setAnnouncements,
     setMembers,
     setSettings,
@@ -352,6 +366,7 @@ function AppContent() {
     // and re-reading is both shorter and exactly right.
     let announcementsRefreshInFlight = false;
     let announcementsRefreshQueued = false;
+    let announcementsRevision = 0;
 
     const refreshAnnouncements = async () => {
       if (announcementsRefreshInFlight) {
@@ -359,9 +374,19 @@ function AppContent() {
         return;
       }
       announcementsRefreshInFlight = true;
+      // Same guard as tasks, users and settings: a reply written while this
+      // request was in flight must not be erased by the older snapshot coming
+      // back. Without it a member watches their own answer appear and vanish.
+      const revisionAtStart = announcementsRevision;
       try {
-        const announcements = await fetchAnnouncements();
-        if (active) setAnnouncements(announcements);
+        const [announcements, replies] = await Promise.all([
+          fetchAnnouncements(),
+          fetchAnnouncementReplies(),
+        ]);
+        if (active && revisionAtStart === announcementsRevision) {
+          setAnnouncements(announcements);
+          setAnnouncementReplies(replies);
+        }
       } catch (error) {
         console.error('Failed to synchronize announcements:', error);
       } finally {
@@ -425,7 +450,9 @@ function AppContent() {
 
     const unsubscribeAnnouncements = subscribeToAnnouncements(
       () => {
-        if (active) void refreshAnnouncements();
+        if (!active) return;
+        announcementsRevision += 1;
+        void refreshAnnouncements();
       },
       handleSubscriptionStatus(refreshAnnouncements)
     );
@@ -461,6 +488,7 @@ function AppContent() {
     addToast,
     isAuthenticated,
     removeMember,
+    setAnnouncementReplies,
     setAnnouncements,
     setMembers,
     setSettings,

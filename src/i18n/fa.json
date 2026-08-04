@@ -288,7 +288,14 @@
     "admin_role": "مدیر",
     "member_role": "عضو",
     "task_count": "تسک",
-    "not_found": "عضو پیدا نشد"
+    "not_found": "عضو پیدا نشد",
+    "can_reply": "پاسخ به اعلان",
+    "can_reply_yes": "مجاز",
+    "can_reply_no": "غیرمجاز",
+    "can_reply_always": "همیشه",
+    "can_reply_help": "اینکه این عضو بتواند به اعلان‌ها پاسخ دهد. مدیران همیشه می‌توانند.",
+    "can_reply_granted": "{name} اکنون می‌تواند به اعلان‌ها پاسخ دهد",
+    "can_reply_revoked": "{name} دیگر نمی‌تواند به اعلان‌ها پاسخ دهد"
   },
   "payments": {
     "title": "پرداخت‌ها",
@@ -557,6 +564,17 @@
     "for_you": "برای شما",
     "dismiss": "بستن اعلان",
     "aria_label": "اعلان تیم",
-    "aria_label_personal": "اعلان مخصوص شما"
+    "aria_label_personal": "اعلان مخصوص شما",
+    "reply": "پاسخ",
+    "reply_again": "پاسخ دیگر",
+    "send_reply": "ارسال",
+    "reply_placeholder": "پاسخ خود را بنویسید — به هر زبانی.",
+    "reply_sent": "پاسخ شما ارسال شد",
+    "reply_withdrawn": "پاسخ شما پس گرفته شد",
+    "reply_deleted": "پاسخ حذف شد",
+    "reply_error": "ارسال پاسخ ممکن نشد",
+    "withdraw_reply": "پس گرفتن این پاسخ",
+    "delete_reply": "حذف این پاسخ",
+    "replies_title": "پاسخ‌های این اعلان"
   }
 }

@@ -95,11 +95,15 @@ async function stub(page, actor, store) {
       if (request.method() === 'PATCH') {
         const patch = JSON.parse(request.postData() || '{}');
         const row = store.find((r) => r.id === idFilter);
+        if (!row) return json([]);
         Object.assign(row, patch, { updated: new Date().toISOString() });
         return json([row]);
       }
       if (request.method() === 'DELETE') {
+        // findIndex gives -1 when nothing matches and splice(-1, 1) removes the
+        // LAST row, so a wrong id used to look like a successful delete.
         const index = store.findIndex((r) => r.id === idFilter);
+        if (index < 0) return json([]);
         const [row] = store.splice(index, 1);
         return json([row]);
       }

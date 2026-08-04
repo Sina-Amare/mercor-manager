@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Loader2,
   Megaphone,
+  MessageSquare,
   Pencil,
   Send,
   Trash2,
@@ -10,9 +11,10 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import type { Announcement, AnnouncementLevel, User } from '../../types';
+import type { Announcement, AnnouncementLevel, AnnouncementReply, User } from '../../types';
 import { useLanguageStore } from '../../store';
 import DateDisplay from '../shared/DateDisplay';
+import { formatNumber } from '../../utils/dates';
 
 const LEVELS: readonly AnnouncementLevel[] = ['info', 'warning', 'critical'];
 
@@ -25,6 +27,7 @@ export interface AnnouncementDraft {
 
 interface Props {
   announcements: Announcement[];
+  replies: AnnouncementReply[];
   members: User[];
   /** The admin writing. They are not offered as a recipient of their own notice. */
   authorId: string;
@@ -32,6 +35,7 @@ interface Props {
   onPublish: (draft: AnnouncementDraft) => void;
   onUpdate: (id: string, draft: AnnouncementDraft) => void;
   onDelete: (announcement: Announcement) => void;
+  onDeleteReply: (reply: AnnouncementReply) => void;
 }
 
 const EMPTY: AnnouncementDraft = { body: '', level: 'info', targetUserId: null };
@@ -50,16 +54,19 @@ const EMPTY: AnnouncementDraft = { body: '', level: 'info', targetUserId: null }
  */
 export default function AnnouncementEditor({
   announcements,
+  replies,
   members,
   authorId,
   busy,
   onPublish,
   onUpdate,
   onDelete,
+  onDeleteReply,
 }: Props) {
   const { t, language } = useLanguageStore();
   const [draft, setDraft] = useState<AnnouncementDraft>(EMPTY);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [openReplies, setOpenReplies] = useState<string | null>(null);
 
   const set = (patch: Partial<AnnouncementDraft>) => setDraft((current) => ({ ...current, ...patch }));
 
@@ -216,8 +223,15 @@ export default function AnnouncementEditor({
         <div className="announcement-list">
           <h3 className="announcement-list-title">{t('announcement.live_title')}</h3>
           <ul className="announcement-list-items">
-            {announcements.map((announcement) => (
-              <li key={announcement.id} className="announcement-row">
+            {announcements.map((announcement) => {
+              const answers = replies
+                .filter((reply) => reply.announcement_id === announcement.id)
+                .sort((a, b) => a.created.localeCompare(b.created));
+              const showing = openReplies === announcement.id;
+
+              return (
+                <li key={announcement.id} className="announcement-row-group">
+                  <div className="announcement-row">
                 <span
                   className={`announcement-row-audience ${
                     announcement.target_user_id ? 'is-personal' : ''
@@ -245,6 +259,19 @@ export default function AnnouncementEditor({
                   <DateDisplay date={announcement.created} />
                 </span>
                 <span className="announcement-row-actions">
+                  {answers.length > 0 && (
+                    <button
+                      className={`btn btn-ghost btn-sm announcement-row-replies ${
+                        showing ? 'is-open' : ''
+                      }`}
+                      onClick={() => setOpenReplies(showing ? null : announcement.id)}
+                      aria-expanded={showing}
+                      title={t('announcement.replies_title')}
+                    >
+                      <MessageSquare size={14} />
+                      {formatNumber(answers.length, language)}
+                    </button>
+                  )}
                   <button
                     className="btn btn-ghost btn-icon btn-sm"
                     onClick={() => startEditing(announcement)}
@@ -264,8 +291,41 @@ export default function AnnouncementEditor({
                     <Trash2 size={14} />
                   </button>
                 </span>
-              </li>
-            ))}
+                  </div>
+
+                  {/* answers.length guards the panel as well as the button:
+                      deleting the last answer would otherwise leave an empty
+                      open panel with nothing left to close it. */}
+                  {showing && answers.length > 0 && (
+                    <ul className="announcement-answers">
+                      {answers.map((reply) => (
+                        <li key={reply.id} className="announcement-answer">
+                          <span className="announcement-answer-author">
+                            <UserRound size={13} aria-hidden="true" />
+                            {nameFor(reply.author_id)}
+                          </span>
+                          <p className="announcement-answer-body" dir="auto">
+                            {reply.body}
+                          </p>
+                          <span className="announcement-answer-date">
+                            <DateDisplay date={reply.created} />
+                          </span>
+                          <button
+                            className="btn btn-ghost btn-icon btn-sm btn-ghost-danger"
+                            onClick={() => onDeleteReply(reply)}
+                            disabled={busy}
+                            aria-label={t('announcement.delete_reply')}
+                            title={t('announcement.delete_reply')}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

@@ -8,7 +8,7 @@ import { TASK_STATUSES, type Task, type User, type TaskStatus, type AppSettings 
 // surface it; nothing is ever written to a browser-only copy that other members
 // could never receive.
 
-const USER_FIELDS = 'id,username,email,name,role,avatar,is_active,created,updated';
+const USER_FIELDS = 'id,username,email,name,role,avatar,is_active,created,updated,can_reply_announcements';
 
 function toPublicUser(user: User): User {
   return {
@@ -21,6 +21,7 @@ function toPublicUser(user: User): User {
     is_active: user.is_active,
     created: user.created,
     updated: user.updated,
+    can_reply_announcements: user.can_reply_announcements ?? false,
   };
 }
 

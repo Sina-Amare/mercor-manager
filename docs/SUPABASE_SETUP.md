@@ -23,6 +23,7 @@ Apply in filename order through the SQL editor.
 | `20260736_global_announcement.sql` | Team-wide notice on `settings` | yes |
 | `20260737_close_public_access.sql` | RLS on `task_transitions`, private identity helpers, grants cut to what the client uses | yes |
 | `20260738_targeted_announcements.sql` | `announcements` table; replaces the notice columns on `settings` | with the build that reads it |
+| `20260739_announcement_replies.sql` | `users.can_reply_announcements`, `announcement_replies`, RLS, Realtime | **before** the build that reads it |
 
 ## The authentication cutover
 
@@ -90,6 +91,22 @@ key could set any status or payment on any task. Now:
 - **`announcements`** — a notice with `target_user_id` set reaches exactly one
   person, and the policy is what enforces it: the row never leaves the database
   for anybody else, over REST or over the Realtime socket. Only admins write.
+- **`announcement_replies`** — writable only by an account whose
+  `users.can_reply_announcements` is true (admins always), only as themselves,
+  and only against a notice addressed to them. Readable by its author and by
+  admins, so one member never sees what a colleague answered.
+
+### Migration ordering, and how it bites
+
+A migration that adds a column the client *selects* must be applied **before**
+the build that selects it. `src/api/auth.ts` reads a fixed column list and
+treats any error as "no profile", which signs the session out — so shipping the
+frontend first would log the whole team out until the migration caught up. The
+initial reads in `src/App.tsx` tolerate an announcements failure for the same
+reason, but `loadProfile` cannot: it is the sign-in path.
+
+The reverse direction is safe. Every migration here only adds columns and
+tables, so an older build simply ignores them.
 
 Every policy asks `private.current_app_user_id() is not null` before anything
 else. A Supabase Auth account is not an AGNUS account: a session with no active

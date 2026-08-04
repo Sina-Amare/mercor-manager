@@ -16,7 +16,13 @@ import {
 } from 'lucide-react';
 import { useAuthStore, useLanguageStore, useAppStore, useToastStore } from '../store';
 import { exportBackup, importBackup, updateSettings } from '../api/tasks';
-import { createUser, deleteUser, setUserActive, updateUser } from '../api/users';
+import {
+  createUser,
+  deleteUser,
+  setCanReplyAnnouncements,
+  setUserActive,
+  updateUser,
+} from '../api/users';
 import ConfirmDialog, { type ConfirmTone } from '../components/shared/ConfirmDialog';
 import AnnouncementEditor, {
   type AnnouncementDraft,
@@ -24,10 +30,12 @@ import AnnouncementEditor, {
 import {
   createAnnouncement,
   deleteAnnouncement,
+  deleteAnnouncementReply,
+  fetchAnnouncementReplies,
   fetchAnnouncements,
   updateAnnouncement,
 } from '../api/announcements';
-import type { Announcement, User } from '../types';
+import type { Announcement, AnnouncementReply, User } from '../types';
 import { formatNumber } from '../utils/dates';
 
 type PendingConfirm = {
@@ -48,6 +56,8 @@ export default function Settings() {
     setSettings,
     announcements,
     setAnnouncements,
+    announcementReplies,
+    setAnnouncementReplies,
     addMember,
     updateMember,
     removeMember,
@@ -191,8 +201,38 @@ export default function Settings() {
   const removeAnnouncement = (announcement: Announcement) =>
     run(async () => {
       await deleteAnnouncement(announcement.id);
-      setAnnouncements(await fetchAnnouncements());
+      // The database cascades its replies away; re-read both or the store keeps
+      // answers to a notice that no longer exists.
+      const [fresh, replies] = await Promise.all([
+        fetchAnnouncements(),
+        fetchAnnouncementReplies(),
+      ]);
+      setAnnouncements(fresh);
+      setAnnouncementReplies(replies);
       addToast(t('announcement.cleared'), 'success');
+    });
+
+  const removeReply = (reply: AnnouncementReply) =>
+    run(async () => {
+      await deleteAnnouncementReply(reply.id);
+      setAnnouncementReplies(await fetchAnnouncementReplies());
+      addToast(t('announcement.reply_deleted'), 'success');
+    });
+
+  // Granting or withdrawing this is one click either way, so it does not ask
+  // first — the confirmations are kept for what cannot be undone as easily.
+  const toggleCanReply = (member: User) =>
+    run(async () => {
+      const next = !member.can_reply_announcements;
+      const updated = await setCanReplyAnnouncements(member.id, next);
+      updateMember(updated.id, updated);
+      addToast(
+        (next ? t('members.can_reply_granted') : t('members.can_reply_revoked')).replace(
+          '{name}',
+          member.name
+        ),
+        'success'
+      );
     });
 
   // ── Backup ─────────────────────────────────────────────────────────────────
@@ -410,12 +450,14 @@ export default function Settings() {
 
       <AnnouncementEditor
         announcements={announcements}
+        replies={announcementReplies}
         members={members}
         authorId={currentUser?.id || ''}
         busy={busy}
         onPublish={requestPublishAnnouncement}
         onUpdate={saveAnnouncement}
         onDelete={removeAnnouncement}
+        onDeleteReply={removeReply}
       />
 
       <div className="settings-grid section-gap">
@@ -599,6 +641,7 @@ export default function Settings() {
                 <th scope="col">{t('members.role')}</th>
                 <th scope="col">{t('members.total_tasks')}</th>
                 <th scope="col">{t('settings.account_status')}</th>
+                <th scope="col">{t('members.can_reply')}</th>
                 <th scope="col">{t('tasks.actions')}</th>
               </tr>
             </thead>
@@ -636,6 +679,27 @@ export default function Settings() {
                       >
                         {member.is_active ? t('settings.active') : t('settings.inactive')}
                       </span>
+                    </td>
+                    <td data-label={t('members.can_reply')}>
+                      {member.role === 'admin' ? (
+                        <span className="status-badge is-active">{t('members.can_reply_always')}</span>
+                      ) : (
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={Boolean(member.can_reply_announcements)}
+                          className={`permission-toggle ${
+                            member.can_reply_announcements ? 'is-on' : ''
+                          }`}
+                          onClick={() => toggleCanReply(member)}
+                          disabled={busy || !member.is_active}
+                          title={t('members.can_reply_help')}
+                        >
+                          {member.can_reply_announcements
+                            ? t('members.can_reply_yes')
+                            : t('members.can_reply_no')}
+                        </button>
+                      )}
                     </td>
                     <td data-label={t('tasks.actions')}>
                       <div className="row-actions">

@@ -288,7 +288,14 @@
     "admin_role": "Admin",
     "member_role": "Member",
     "task_count": "tasks",
-    "not_found": "Member not found"
+    "not_found": "Member not found",
+    "can_reply": "Announcement replies",
+    "can_reply_yes": "Allowed",
+    "can_reply_no": "Not allowed",
+    "can_reply_always": "Always",
+    "can_reply_help": "Whether this member can answer announcements. Admins always can.",
+    "can_reply_granted": "{name} can now answer announcements",
+    "can_reply_revoked": "{name} can no longer answer announcements"
   },
   "payments": {
     "title": "Payments",
@@ -557,6 +564,17 @@
     "for_you": "For you",
     "dismiss": "Dismiss announcement",
     "aria_label": "Team announcement",
-    "aria_label_personal": "Announcement for you"
+    "aria_label_personal": "Announcement for you",
+    "reply": "Reply",
+    "reply_again": "Reply again",
+    "send_reply": "Send",
+    "reply_placeholder": "Write your answer — in any language.",
+    "reply_sent": "Your answer was sent",
+    "reply_withdrawn": "Your answer was withdrawn",
+    "reply_deleted": "Reply deleted",
+    "reply_error": "Could not send your answer",
+    "withdraw_reply": "Withdraw this answer",
+    "delete_reply": "Delete this reply",
+    "replies_title": "Answers to this announcement"
   }
 }

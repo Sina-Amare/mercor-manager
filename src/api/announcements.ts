@@ -1,7 +1,8 @@
 import { supabase } from './supabase';
-import type { Announcement, AnnouncementLevel } from '../types';
+import type { Announcement, AnnouncementLevel, AnnouncementReply } from '../types';
 
 const FIELDS = 'id,body,level,target_user_id,created_by,created,updated';
+const REPLY_FIELDS = 'id,announcement_id,author_id,body,created';
 
 function announcementError(action: string, error: unknown) {
   const code =
@@ -80,17 +81,64 @@ export async function deleteAnnouncement(id: string): Promise<void> {
   if (error) throw announcementError('Taking the announcement down', error);
 }
 
+// ─── Replies ─────────────────────────────────────────────────────────────────
+
 /**
- * The list is a handful of rows, so any change refetches the lot rather than
- * patching a local copy from the payload. A DELETE event on an RLS-filtered
- * table carries only the primary key, and re-reading is both shorter and
- * exactly right.
+ * Again no filter, and again on purpose. The policy returns every reply to an
+ * admin and only their own to everybody else, so one member's answer cannot
+ * reach another member's browser even on a notice sent to the whole team.
+ */
+export async function fetchAnnouncementReplies(): Promise<AnnouncementReply[]> {
+  const { data, error } = await supabase
+    .from('announcement_replies')
+    .select(REPLY_FIELDS)
+    .order('created', { ascending: true });
+
+  if (error) throw announcementError('Loading replies', error);
+  return (data || []) as AnnouncementReply[];
+}
+
+export async function createAnnouncementReply(input: {
+  announcementId: string;
+  authorId: string;
+  body: string;
+}): Promise<AnnouncementReply> {
+  const { data, error } = await supabase
+    .from('announcement_replies')
+    .insert({
+      id: `arep_${globalThis.crypto?.randomUUID?.().replace(/-/g, '') || Date.now()}`,
+      announcement_id: input.announcementId,
+      author_id: input.authorId,
+      body: input.body.trim(),
+    })
+    .select(REPLY_FIELDS)
+    .single();
+
+  if (error) throw announcementError('Sending the reply', error);
+  return data as AnnouncementReply;
+}
+
+export async function deleteAnnouncementReply(id: string): Promise<void> {
+  const { error } = await supabase.from('announcement_replies').delete().eq('id', id);
+  if (error) throw announcementError('Withdrawing the reply', error);
+}
+
+/**
+ * One channel for both tables, one callback.
+ *
+ * The lists are a handful of rows, so any change refetches rather than patching
+ * a local copy from the payload: a DELETE event on an RLS-filtered table
+ * carries only the primary key, and re-reading is both shorter and exactly
+ * right.
  */
 export function subscribeToAnnouncements(onChange: () => void, onStatus?: (status: string) => void) {
   try {
     const channel = supabase
       .channel(`public:announcements:${globalThis.crypto?.randomUUID?.() || Date.now()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, () =>
+        onChange()
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'announcement_replies' }, () =>
         onChange()
       )
       .subscribe((status) => onStatus?.(status));

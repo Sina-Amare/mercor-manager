@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, Megaphone, UserRound, X } from 'lucide-react';
 import { useAppStore, useAuthStore, useLanguageStore } from '../../store';
+import AnnouncementReplyBox from './AnnouncementReplyBox';
 import type { Announcement, AnnouncementLevel } from '../../types';
 
 const SEEN_KEY = 'agnus:announcements-seen';
@@ -53,7 +54,7 @@ const LEVEL_ORDER: Record<AnnouncementLevel, number> = { critical: 0, warning: 1
  * that mixes scripts.
  */
 export default function AnnouncementBanner() {
-  const { announcements } = useAppStore();
+  const { announcements, announcementReplies } = useAppStore();
   const { user } = useAuthStore();
   const { t, language } = useLanguageStore();
   const [seen, setSeen] = useState(readSeen);
@@ -94,12 +95,20 @@ export default function AnnouncementBanner() {
       {visible.map((announcement) => {
         const Icon = LEVEL_ICON[announcement.level] ?? Megaphone;
         const forMe = Boolean(announcement.target_user_id);
+        // The banner is the only place a notice can be answered, so somebody
+        // who has been asked for an answer is not offered the button that
+        // would take the question away before they gave one. Answer it and
+        // dismissing comes back.
+        const owesAnAnswer =
+          Boolean(user?.can_reply_announcements) &&
+          !announcementReplies.some(
+            (reply) => reply.announcement_id === announcement.id && reply.author_id === user?.id
+          );
         return (
           <aside
             key={announcement.id}
             className={`announcement announcement-${announcement.level}${forMe ? ' is-personal' : ''}`}
             dir="auto"
-            role={announcement.level === 'critical' ? 'alert' : 'status'}
             aria-label={forMe ? t('announcement.aria_label_personal') : t('announcement.aria_label')}
           >
             <Icon className="announcement-icon" size={20} aria-hidden="true" />
@@ -110,17 +119,28 @@ export default function AnnouncementBanner() {
                   {t('announcement.for_you')}
                 </span>
               )}
-              <p className="announcement-text">{announcement.body}</p>
+              {/* The live region is the message, not the banner. With the role
+                  on the container, every keystroke in the reply box below sat
+                  inside it and screen readers re-announced the whole notice. */}
+              <p
+                className="announcement-text"
+                role={announcement.level === 'critical' ? 'alert' : 'status'}
+              >
+                {announcement.body}
+              </p>
+              <AnnouncementReplyBox announcement={announcement} />
             </div>
-            <button
-              type="button"
-              className="btn btn-ghost btn-icon btn-sm announcement-dismiss"
-              onClick={() => dismiss(announcement)}
-              aria-label={t('announcement.dismiss')}
-              title={t('announcement.dismiss')}
-            >
-              <X size={16} />
-            </button>
+            {!owesAnAnswer && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon btn-sm announcement-dismiss"
+                onClick={() => dismiss(announcement)}
+                aria-label={t('announcement.dismiss')}
+                title={t('announcement.dismiss')}
+              >
+                <X size={16} />
+              </button>
+            )}
           </aside>
         );
       })}
