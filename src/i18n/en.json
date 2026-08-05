@@ -451,7 +451,7 @@
     "unpin": "Remove pin",
     "move_up": "Move up",
     "move_down": "Move down",
-    "pin_error": "Could not change the pin",
+    "pin_error": "Could not reach the server — the order was not saved",
     "moved_to": "Moved {title} to position {position} of {total}",
     "position_of": "Position {position} of {total}"
   },

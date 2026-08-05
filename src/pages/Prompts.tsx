@@ -323,9 +323,15 @@ export default function Prompts() {
     pinBusyRef.current = true;
     pinsRevision.current += 1;
     setPinBusy(true);
+    // What the server last agreed to. If the write fails we go back to this,
+    // even when the re-read fails too — which is exactly what happens when the
+    // connection has dropped. Leaving the optimistic order on screen would show
+    // an order that was never saved, and look like it worked.
+    const lastKnownGood = pins;
     try {
       await action();
     } catch (error) {
+      setPins(lastKnownGood);
       addToast(error instanceof Error ? error.message : t(errorKey), 'error');
     } finally {
       // Re-read either way: on failure to undo the optimistic order, on success
@@ -336,7 +342,8 @@ export default function Prompts() {
       try {
         setPins(await fetchPromptPins());
       } catch {
-        // Realtime and the backstop both correct this shortly.
+        // Offline. The catch above has already put the list back to the last
+        // state the server confirmed, so the screen is honest either way.
       }
       pinBusyRef.current = false;
       setPinBusy(false);

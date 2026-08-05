@@ -451,7 +451,7 @@
     "unpin": "برداشتن سنجاق",
     "move_up": "انتقال به بالا",
     "move_down": "انتقال به پایین",
-    "pin_error": "تغییر سنجاق ممکن نشد",
+    "pin_error": "ارتباط با سرور برقرار نشد — ترتیب ذخیره نشد",
     "moved_to": "{title} به جایگاه {position} از {total} منتقل شد",
     "position_of": "جایگاه {position} از {total}"
   },
