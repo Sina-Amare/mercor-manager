@@ -77,8 +77,17 @@ export default function Prompts() {
   const [focusAfterMove, setFocusAfterMove] = useState<string | null>(null);
   const [moveAnnouncement, setMoveAnnouncement] = useState('');
 
+  // The id, not the object. `publicUser()` mints a fresh object on every
+  // login/updateUser, and both fire several times on a normal page load — the
+  // session restore, the auth-state callback, and the roster refresh. Depending
+  // on the object tore this whole effect down and rebuilt it each time, so the
+  // page opened three realtime channels in a row and closed two of them. A
+  // change landing in one of those gaps is simply missed, which is what "it
+  // didn't sync until I refreshed" looks like from the outside.
+  const userId = user?.id;
+
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
 
     let active = true;
     let refreshInFlight = false;
@@ -99,7 +108,7 @@ export default function Prompts() {
         // fail the list. An older build against a newer database, or the other
         // way round, still shows the prompts.
         const [latestPrompts, latestPins] = await Promise.all([
-          fetchPrompts(user.id),
+          fetchPrompts(userId),
           fetchPromptPins().catch(() => [] as PromptPin[]),
         ]);
         if (active && revisionAtStart === realtimeRevision) {
@@ -137,7 +146,7 @@ export default function Prompts() {
           }
         } else if (newPrompt) {
           const isVisible =
-            newPrompt.visibility === 'public' || newPrompt.owner_id === user.id;
+            newPrompt.visibility === 'public' || newPrompt.owner_id === userId;
           setPrompts((current) =>
             isVisible
               ? upsertPrompt(current, newPrompt)
@@ -197,7 +206,7 @@ export default function Prompts() {
       unsubscribe();
       unsubscribePins();
     };
-  }, [t, user]);
+  }, [t, userId]);
 
   const publicCount = prompts.filter((prompt) => prompt.visibility === 'public').length;
   const personalCount = prompts.filter((prompt) => prompt.visibility === 'personal').length;
