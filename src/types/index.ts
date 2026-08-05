@@ -133,6 +133,18 @@ export interface SavedPrompt {
   updated: string;
 }
 
+/**
+ * One person's pin on one prompt. Private to them — not to their team, and not
+ * to an admin either.
+ */
+export interface PromptPin {
+  user_id: string;
+  prompt_id: string;
+  /** Ascending. Not unique; `created` breaks ties. */
+  sort_order: number;
+  created: string;
+}
+
 // ─── UI Types ────────────────────────────────────────────────────────────────
 
 export type Language = 'en' | 'fa';

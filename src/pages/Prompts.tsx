@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
+  ChevronDown,
+  ChevronUp,
   Globe2,
   Loader2,
   MessageSquareText,
   Pencil,
+  Pin,
+  PinOff,
   Plus,
   Search,
   Trash2,
@@ -20,9 +24,17 @@ import {
   updatePrompt,
   PromptConflictError,
 } from '../api/prompts';
-import type { PromptVisibility, SavedPrompt } from '../types';
+import {
+  fetchPromptPins,
+  pinPrompt,
+  reorderPromptPins,
+  subscribeToPromptPins,
+  unpinPrompt,
+} from '../api/promptPins';
+import type { PromptPin, PromptVisibility, SavedPrompt } from '../types';
 import DateDisplay from '../components/shared/DateDisplay';
 import CopyButton from '../components/shared/CopyButton';
+import { formatNumber } from '../utils/dates';
 
 function sortPrompts(prompts: SavedPrompt[]) {
   return [...prompts].sort(
@@ -38,7 +50,7 @@ function upsertPrompt(prompts: SavedPrompt[], prompt: SavedPrompt) {
 export default function Prompts() {
   const { user } = useAuthStore();
   const { members } = useAppStore();
-  const { t } = useLanguageStore();
+  const { t, language } = useLanguageStore();
   const { addToast } = useToastStore();
   const [prompts, setPrompts] = useState<SavedPrompt[]>([]);
   const [activeTab, setActiveTab] = useState<PromptVisibility>('public');
@@ -53,6 +65,17 @@ export default function Prompts() {
   const [saving, setSaving] = useState(false);
   const [deletingPrompt, setDeletingPrompt] = useState<SavedPrompt | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [pins, setPins] = useState<PromptPin[]>([]);
+  const [pinBusy, setPinBusy] = useState(false);
+  // A write must invalidate a read that is already in flight, and the read
+  // lives inside the effect's closure — so the counter has to outlive both.
+  const pinsRevision = useRef(0);
+  // Re-entrancy guard that does not lag a render behind, so the arrows can stay
+  // enabled while a write is running instead of vanishing under the pointer.
+  const pinBusyRef = useRef(false);
+  // Which control to put focus back on once the strip has re-rendered.
+  const [focusAfterMove, setFocusAfterMove] = useState<string | null>(null);
+  const [moveAnnouncement, setMoveAnnouncement] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -70,11 +93,22 @@ export default function Prompts() {
 
       refreshInFlight = true;
       const revisionAtStart = realtimeRevision;
+      const pinsAtStart = pinsRevision.current;
       try {
-        const latestPrompts = await fetchPrompts(user.id);
+        // Pins are a convenience on top of the list, so they are not allowed to
+        // fail the list. An older build against a newer database, or the other
+        // way round, still shows the prompts.
+        const [latestPrompts, latestPins] = await Promise.all([
+          fetchPrompts(user.id),
+          fetchPromptPins().catch(() => [] as PromptPin[]),
+        ]);
         if (active && revisionAtStart === realtimeRevision) {
           setPrompts(sortPrompts(latestPrompts));
           setLoadError('');
+          // A reorder that started after this read must not be undone by it.
+          // The prompts guard above cannot cover this: it counts realtime
+          // events, and a local write is not one.
+          if (pinsAtStart === pinsRevision.current) setPins(latestPins);
         }
       } catch (error) {
         if (active) {
@@ -125,6 +159,20 @@ export default function Prompts() {
       }
     );
 
+    // A pin written on the other laptop should land here too.
+    const unsubscribePins = subscribeToPromptPins(
+      () => {
+        if (!active) return;
+        realtimeRevision += 1;
+        void refresh();
+      },
+      (status) => {
+        if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+          void refresh();
+        }
+      }
+    );
+
     // Realtime plus a slow backstop, matching the task subscription.
     const handleFocus = () => void refresh();
     const handleVisibility = () => {
@@ -147,6 +195,7 @@ export default function Prompts() {
       window.removeEventListener('online', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
       unsubscribe();
+      unsubscribePins();
     };
   }, [t, user]);
 
@@ -245,6 +294,123 @@ export default function Prompts() {
     }
   };
 
+  // ── Pins ───────────────────────────────────────────────────────────────────
+  // A pin points at a prompt id, so one whose prompt has gone — deleted, or a
+  // shared prompt that stopped being shared — is dropped from the strip rather
+  // than rendered as a blank row. The database cascade removes the row itself.
+  const pinnedPrompts = useMemo(() => {
+    const byId = new Map(prompts.map((prompt) => [prompt.id, prompt]));
+    return pins
+      .map((pin) => byId.get(pin.prompt_id))
+      .filter((prompt): prompt is SavedPrompt => Boolean(prompt));
+  }, [pins, prompts]);
+
+  const isPinned = (promptId: string) => pins.some((pin) => pin.prompt_id === promptId);
+
+  const runPinAction = async (action: () => Promise<void>, errorKey: string) => {
+    // The ref, not the state: state lags a render, and the arrows deliberately
+    // stay enabled during a write so they do not disappear under the pointer.
+    if (!user || pinBusyRef.current) return;
+    pinBusyRef.current = true;
+    pinsRevision.current += 1;
+    setPinBusy(true);
+    try {
+      await action();
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : t(errorKey), 'error');
+    } finally {
+      // Re-read either way: on failure to undo the optimistic order, on success
+      // to pick up whatever the database actually stored. Bumping the revision
+      // again first means a read that started before this write cannot land on
+      // top of the answer.
+      pinsRevision.current += 1;
+      try {
+        setPins(await fetchPromptPins());
+      } catch {
+        // Realtime and the backstop both correct this shortly.
+      }
+      pinBusyRef.current = false;
+      setPinBusy(false);
+    }
+  };
+
+  const togglePin = (prompt: SavedPrompt) => {
+    if (!user) return;
+    const pinned = isPinned(prompt.id);
+    void runPinAction(
+      () =>
+        pinned
+          ? unpinPrompt(user.id, prompt.id)
+          : pinPrompt(user.id, prompt.id, pins),
+      'prompts.pin_error'
+    );
+  };
+
+  /**
+   * Moves one pin by one place.
+   *
+   * The whole resulting order is sent, not the swap, so the outcome does not
+   * depend on what the server currently holds — two devices reordering at once
+   * cannot interleave into an order neither person asked for.
+   */
+  const movePin = (promptId: string, direction: -1 | 1) => {
+    if (!user) return;
+    const visible = pinnedPrompts.map((prompt) => prompt.id);
+    const from = visible.indexOf(promptId);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= visible.length) return;
+    [visible[from], visible[to]] = [visible[to], visible[from]];
+
+    // A pin whose prompt this browser has not loaded — a shared prompt that
+    // stopped being shared, or a list still arriving — is invisible but still
+    // real. Keeping it on the end means reordering what you can see never
+    // renumbers on top of it, and never drops it from local state either.
+    const hidden = pins
+      .filter((pin) => !visible.includes(pin.prompt_id))
+      .map((pin) => pin.prompt_id);
+    const order = [...visible, ...hidden];
+
+    // Show the new order immediately; the refresh in runPinAction reconciles.
+    setPins(
+      order.map((id, index) => {
+        const existing = pins.find((pin) => pin.prompt_id === id);
+        return {
+          user_id: user.id,
+          prompt_id: id,
+          sort_order: index,
+          created: existing?.created ?? new Date().toISOString(),
+        };
+      })
+    );
+
+    // Keep the person where they were. The button they pressed rides with the
+    // item, and if that item has reached an end its button is now disabled, so
+    // focus goes to the other arrow rather than being dropped on the document.
+    const landedAtEnd = direction === -1 ? to === 0 : to === visible.length - 1;
+    setFocusAfterMove(`${promptId}:${landedAtEnd ? -direction : direction}`);
+    // Nothing else tells a screen-reader user that the move happened, or where
+    // the item landed — the rank badge is decorative.
+    const moved = pinnedPrompts.find((prompt) => prompt.id === promptId);
+    setMoveAnnouncement(
+      t('prompts.moved_to')
+        .replace('{title}', moved?.title ?? '')
+        .replace('{position}', formatNumber(to + 1, language))
+        .replace('{total}', formatNumber(visible.length, language))
+    );
+
+    void runPinAction(() => reorderPromptPins(user.id, order), 'prompts.pin_error');
+  };
+
+  // Focus survives the re-render that the move causes.
+  useEffect(() => {
+    if (!focusAfterMove) return;
+    const target = document.querySelector<HTMLButtonElement>(
+      `[data-pin-control="${CSS.escape(focusAfterMove)}"]`
+    );
+    target?.focus();
+    setFocusAfterMove(null);
+  }, [focusAfterMove, pins]);
+
   const canEdit = (prompt: SavedPrompt) =>
     prompt.created_by
       ? prompt.created_by === user?.id
@@ -277,6 +443,96 @@ export default function Prompts() {
           </button>
         ) : null}
       </div>
+
+      {pinnedPrompts.length > 0 ? (
+        <section className="prompts-pinned" aria-label={t('prompts.pinned')}>
+          <h2 className="prompts-pinned-title">
+            <Pin size={14} aria-hidden="true" />
+            {t('prompts.pinned')}
+            <span className="prompts-pinned-help">{t('prompts.pinned_help')}</span>
+          </h2>
+          {/* Announces where a moved pin landed. The rank badge is decorative,
+              so without this a screen-reader user presses "Move up" and is told
+              nothing at all. */}
+          <p className="sr-only" role="status" aria-live="polite">
+            {moveAnnouncement}
+          </p>
+          {/* role="list" restores what `list-style: none` takes away in Safari
+              and VoiceOver, so the strip is still announced as a list of N. */}
+          <ol className="prompts-pinned-list" role="list">
+            {pinnedPrompts.map((prompt, index) => (
+              <li key={prompt.id} className="prompts-pinned-item">
+                <span className="prompts-pinned-rank" aria-hidden="true">
+                  {formatNumber(index + 1, language)}
+                </span>
+                <span className="sr-only">
+                  {t('prompts.position_of')
+                    .replace('{position}', formatNumber(index + 1, language))
+                    .replace('{total}', formatNumber(pinnedPrompts.length, language))}
+                </span>
+                {/* The title is the thing being truncated, so the title is what
+                    the tooltip has to show — pointing it at the body popped a
+                    50,000-character block over the strip. */}
+                <span className="prompts-pinned-name" dir="auto" title={prompt.title}>
+                  {prompt.title}
+                </span>
+                <span className={`prompt-scope prompt-scope-${prompt.visibility}`}>
+                  {prompt.visibility === 'public' ? <Globe2 size={12} /> : <UserRound size={12} />}
+                  {prompt.visibility === 'public'
+                    ? t('prompts.public_badge')
+                    : t('prompts.personal_badge')}
+                </span>
+                <span className="prompts-pinned-actions">
+                  <CopyButton
+                    text={prompt.body}
+                    compact
+                    ariaLabel={`${t('common.copy')}: ${prompt.title}`}
+                  />
+                  {/* Up and down rather than dragging: reachable by keyboard,
+                      announced by a screen reader, and nothing to install.
+
+                      Not disabled while a write is running, only at the ends. A
+                      button that disables itself under the pointer loses focus
+                      to the document body, and walking a pin up five places
+                      meant tabbing back through the whole page five times. */}
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-icon btn-sm"
+                    data-pin-control={`${prompt.id}:-1`}
+                    onClick={() => movePin(prompt.id, -1)}
+                    disabled={index === 0}
+                    aria-label={`${t('prompts.move_up')}: ${prompt.title}`}
+                    title={t('prompts.move_up')}
+                  >
+                    <ChevronUp size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-icon btn-sm"
+                    data-pin-control={`${prompt.id}:1`}
+                    onClick={() => movePin(prompt.id, 1)}
+                    disabled={index === pinnedPrompts.length - 1}
+                    aria-label={`${t('prompts.move_down')}: ${prompt.title}`}
+                    title={t('prompts.move_down')}
+                  >
+                    <ChevronDown size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-icon btn-sm"
+                    onClick={() => togglePin(prompt)}
+                    disabled={pinBusy}
+                    aria-label={`${t('prompts.unpin')}: ${prompt.title}`}
+                    title={t('prompts.unpin')}
+                  >
+                    <PinOff size={15} />
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
 
       <div className="prompts-toolbar">
         <div className="prompts-tabs" role="tablist" aria-label={t('prompts.title')}>
@@ -379,6 +635,27 @@ export default function Prompts() {
                     <h2 dir="auto">{prompt.title}</h2>
                   </div>
                   <div className="prompt-card-actions">
+                    <button
+                      type="button"
+                      className={`btn btn-ghost btn-icon btn-sm prompt-pin-button ${
+                        isPinned(prompt.id) ? 'is-pinned' : ''
+                      }`}
+                      onClick={() => togglePin(prompt)}
+                      disabled={pinBusy}
+                      // No aria-pressed alongside a name that flips. Together
+                      // they read as "Remove pin: Alpha, pressed", where the
+                      // name says remove and the state says on. The name
+                      // carries the meaning; the state would only muddy it.
+                      aria-label={`${
+                        isPinned(prompt.id) ? t('prompts.unpin') : t('prompts.pin')
+                      }: ${prompt.title}`}
+                      title={isPinned(prompt.id) ? t('prompts.unpin') : t('prompts.pin')}
+                    >
+                      {/* One icon, filled when pinned. A crossed-out pin here
+                          reads as "not pinned" at a glance, which is the exact
+                          opposite of what it means. */}
+                      <Pin size={15} fill={isPinned(prompt.id) ? 'currentColor' : 'none'} />
+                    </button>
                     <CopyButton
                       text={prompt.body}
                       ariaLabel={`${t('common.copy')}: ${prompt.title}`}

@@ -24,6 +24,7 @@ Apply in filename order through the SQL editor.
 | `20260737_close_public_access.sql` | RLS on `task_transitions`, private identity helpers, grants cut to what the client uses | yes |
 | `20260738_targeted_announcements.sql` | `announcements` table; replaces the notice columns on `settings` | with the build that reads it |
 | `20260739_announcement_replies.sql` | `users.can_reply_announcements`, `announcement_replies`, RLS, Realtime | **before** the build that reads it |
+| `20260740_prompt_pins.sql` | `prompt_pins`: per-person pinned prompts, private even from admins | yes |
 
 ## The authentication cutover
 
@@ -91,6 +92,10 @@ key could set any status or payment on any task. Now:
 - **`announcements`** — a notice with `target_user_id` set reaches exactly one
   person, and the policy is what enforces it: the row never leaves the database
   for anybody else, over REST or over the Realtime socket. Only admins write.
+- **`prompt_pins`** — the strictest table here. Every policy is
+  `user_id = private.current_app_user_id()` with no `is_admin()` escape: a pin
+  is a private preference, so an admin sees none of anybody else’s. You may
+  only pin a prompt you can already see.
 - **`announcement_replies`** — writable only by an account whose
   `users.can_reply_announcements` is true (admins always), only as themselves,
   and only against a notice addressed to them. Readable by its author and by
