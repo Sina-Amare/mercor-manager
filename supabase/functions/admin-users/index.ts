@@ -16,7 +16,14 @@ import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { json, preflight } from '../_shared/cors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+// Prefer the modern `sb_secret_…` key. The platform still injects
+// SUPABASE_SERVICE_ROLE_KEY, but that is a legacy HS256 JWT signed by the
+// shared JWT secret — so it stops working the moment that signing key is
+// revoked, and revoking it is the only way to retire a disclosed secret.
+// Set with: supabase secrets set AGNUS_SECRET_KEY=sb_secret_…
+const SERVICE_ROLE_KEY =
+  Deno.env.get('AGNUS_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const MIGRATION_SECRET = Deno.env.get('MIGRATION_SECRET') ?? '';
 
 const MIN_PASSWORD_LENGTH = 8;

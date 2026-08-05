@@ -153,3 +153,38 @@ needs a credential no build should hold.
 not enable React Server Components, actions, or server-action request handling,
 so the vulnerable code path is not reachable. Track the upstream release and
 upgrade when a patched compatible version ships.
+
+## The JWT signing secret was disclosed, and retired
+
+On 5 August 2026 a temporary debug script carrying the project's legacy HS256
+JWT secret was committed to this public repository (`88de6da`) and removed one
+commit later. Removal from the tree does not remove it from history, so the
+secret was treated as disclosed.
+
+It was exploitable, not theoretically: a token forged with it and presented to
+PostgREST returned the full `public.users` roster, because a signed
+`authenticated` JWT satisfies every policy that asks who the caller is.
+
+The project already signed sessions with an **ES256** key; the HS256 key was
+only `previously_used`, kept to verify older tokens — which is exactly why the
+forged token was still accepted. Revoking it ends that:
+
+```
+forged token, before revoke -> 200  [{"id":"user_admin","role":"admin"}, …]
+forged token, after revoke  -> 401  PGRST301 No suitable key was found to decode the JWT
+```
+
+Nobody was signed out — live sessions are ES256, and refresh tokens are opaque
+rows rather than JWTs.
+
+Two things had to move first, because both rode on the legacy key:
+
+- The **frontend** already used the modern `sb_publishable_…` key. Verified
+  against the deployed bundle before revoking, not assumed.
+- The **`admin-users` function** received `SUPABASE_SERVICE_ROLE_KEY`, a legacy
+  HS256 JWT. It now prefers `AGNUS_SECRET_KEY` (a modern `sb_secret_…` key set
+  with `supabase secrets set`) and falls back to the old variable. Redeployed
+  and verified before the revoke, and again after.
+
+The blob is still reachable at that commit until the history is rewritten. That
+is worth doing, but it is no longer what protects the project — the key is dead.
