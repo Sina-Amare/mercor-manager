@@ -36,6 +36,7 @@ const TaskWorkspace = lazy(() => import('./pages/TaskWorkspace'));
 const Prompts = lazy(() => import('./pages/Prompts'));
 const RecycleBin = lazy(() => import('./pages/RecycleBin'));
 const QueueView = lazy(() => import('./pages/QueueView'));
+const WeeklyLedger = lazy(() => import('./pages/WeeklyLedger'));
 
 function LoadingScreen() {
   return (
@@ -518,6 +519,7 @@ function AppContent() {
           <Route path="/upload" element={<AdminRoute><UploadTasks /></AdminRoute>} />
           <Route path="/tasks" element={<AdminRoute><AllTasks /></AdminRoute>} />
           <Route path="/member/:memberId" element={<AdminRoute><MemberView /></AdminRoute>} />
+          <Route path="/ledger" element={<AdminRoute><WeeklyLedger /></AdminRoute>} />
           <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
           <Route path="/recycle-bin" element={<AdminRoute><RecycleBin /></AdminRoute>} />
 

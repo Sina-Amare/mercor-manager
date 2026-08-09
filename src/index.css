@@ -3403,6 +3403,274 @@ body {
   margin-inline-start: 14px;
 }
 
+/* ─── Weekly ledger ───────────────────────────────────────────────────────────
+   A month laid out as Friday-to-Thursday rows. Everything uses logical
+   properties so the whole grid mirrors in Persian without a second rule. */
+.ledger-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.ledger-calendar-head {
+  align-items: center;
+  display: flex;
+  gap: var(--space-3);
+  justify-content: space-between;
+  margin-block-end: var(--space-4);
+}
+
+.ledger-calendar-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: center;
+}
+
+.ledger-calendar-subtitle {
+  color: var(--color-text-secondary);
+  font-family: var(--font-num);
+  font-size: var(--text-xs);
+}
+
+/* The chevrons point at earlier and later, which swap sides in RTL. */
+[dir="rtl"] .ledger-arrow-back,
+[dir="rtl"] .ledger-arrow-forward {
+  transform: scaleX(-1);
+}
+
+.ledger-calendar-weekdays,
+.ledger-week-row {
+  display: grid;
+  gap: var(--space-1);
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.ledger-calendar-weekdays {
+  color: var(--color-text-secondary);
+  font-family: var(--font-label);
+  font-size: var(--text-xs);
+  margin-block-end: var(--space-2);
+  text-align: center;
+}
+
+.ledger-calendar-weeks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* The row is the control, not the day: a week is the unit of work here. */
+.ledger-week-row {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  padding: var(--space-2);
+  transition: all var(--transition-fast);
+  width: 100%;
+}
+
+.ledger-week-row:hover {
+  border-color: var(--color-border-strong);
+}
+
+.ledger-week-row.has-data {
+  border-inline-start: 3px solid var(--color-info);
+}
+
+.ledger-week-row.is-selected {
+  background: var(--color-primary-50);
+  border-color: var(--color-primary);
+}
+
+.ledger-day {
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  font-family: var(--font-num);
+  font-size: var(--text-sm);
+  padding: var(--space-1) 0;
+  text-align: center;
+}
+
+.ledger-day.is-outside {
+  color: var(--color-text-tertiary);
+}
+
+.ledger-day.is-today {
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: var(--weight-semibold);
+}
+
+.ledger-calendar-help {
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  margin: var(--space-3) 0 0;
+}
+
+.ledger-week-heading {
+  align-items: center;
+  color: var(--color-text-secondary);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.ledger-week-heading .section-heading {
+  margin: 0;
+}
+
+.ledger-projects {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+}
+
+.ledger-project-rate {
+  color: var(--color-text-secondary);
+  font-family: var(--font-num);
+  font-size: var(--text-xs);
+}
+
+.ledger-field-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+}
+
+.ledger-suggestion {
+  align-self: flex-start;
+  margin-block-start: var(--space-1);
+}
+
+/* Definition list rather than a table: these are one-line facts, not rows. */
+.ledger-figures {
+  border-block-start: 1px solid var(--color-border);
+  display: grid;
+  gap: var(--space-2) var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  margin: var(--space-4) 0 0;
+  padding-block-start: var(--space-4);
+}
+
+.ledger-figures > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ledger-figures dt {
+  color: var(--color-text-secondary);
+  font-family: var(--font-label);
+  font-size: var(--text-xs);
+}
+
+.ledger-figures dd {
+  color: var(--color-text-primary);
+  font-family: var(--font-num);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  margin: 0;
+}
+
+.ledger-figures .is-owed dd {
+  color: var(--color-warning);
+}
+
+.ledger-figure-total dd {
+  display: flex;
+  flex-direction: column;
+}
+
+.ledger-warning {
+  align-items: center;
+  color: var(--color-warning);
+  display: flex;
+  font-size: var(--text-xs);
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+}
+
+.ledger-cell-input {
+  max-width: 5.5rem;
+}
+
+.ledger-bonus-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+}
+
+.ledger-bonus {
+  align-items: center;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(6rem, auto) auto 1fr auto auto;
+  padding: var(--space-2) var(--space-3);
+}
+
+.ledger-bonus-who {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.ledger-bonus-note {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-align: start;
+  text-overflow: ellipsis;
+  unicode-bidi: plaintext;
+  white-space: nowrap;
+}
+
+.ledger-bonus-form {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+}
+
+.ledger-week-summary {
+  border-block-start: none;
+  padding-block-start: 0;
+}
+
+.ledger-save-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-block-start: var(--space-4);
+}
+
+@media (max-width: 768px) {
+  .ledger-calendar-weekdays {
+    font-size: 0.625rem;
+  }
+
+  .ledger-day {
+    font-size: var(--text-xs);
+  }
+
+  .ledger-bonus {
+    grid-template-columns: 1fr auto;
+  }
+
+  .ledger-bonus-note {
+    grid-column: 1 / -1;
+    white-space: normal;
+  }
+}
+
 /* ─── Pinned prompts ──────────────────────────────────────────────────────────
    Above the tabs rather than inside one, because a pin can be on a shared or a
    personal prompt and the point of pinning is not having to go and look. */

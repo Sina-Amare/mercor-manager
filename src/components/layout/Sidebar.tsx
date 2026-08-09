@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
+  CalendarRange,
   LayoutDashboard,
   Upload,
   ListTodo,
@@ -214,6 +215,12 @@ export default function Sidebar() {
                   <NavLink to="/payments" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                     <CreditCard size={18} className="sidebar-link-icon" />
                     {t('nav.payments')}
+                  </NavLink>
+                </li>
+                <li>
+                  <NavLink to="/ledger" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+                    <CalendarRange size={18} className="sidebar-link-icon" />
+                    {t('nav.ledger')}
                   </NavLink>
                 </li>
                 <li>
