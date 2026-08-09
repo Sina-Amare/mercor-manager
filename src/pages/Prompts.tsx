@@ -213,14 +213,31 @@ export default function Prompts() {
   const publicCount = prompts.filter((prompt) => prompt.visibility === 'public').length;
   const personalCount = prompts.filter((prompt) => prompt.visibility === 'personal').length;
 
+  /** Where each pinned prompt sits in this person's order. */
+  const pinRank = useMemo(
+    () => new Map(pins.map((pin, index) => [pin.prompt_id, index])),
+    [pins]
+  );
+
   const visiblePrompts = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase();
-    return prompts.filter((prompt) => {
+    const matching = prompts.filter((prompt) => {
       if (prompt.visibility !== activeTab) return false;
       if (!normalizedSearch) return true;
       return `${prompt.title}\n${prompt.body}`.toLocaleLowerCase().includes(normalizedSearch);
     });
-  }, [activeTab, prompts, search]);
+
+    // Pinned first, in the order this person put them, then everything else by
+    // most recently changed. Pinning is for reaching something quickly, so the
+    // order chosen upstairs has to be the order the list is actually read in —
+    // otherwise the arrows rearrange a strip and the page below ignores them.
+    return matching.sort((first, second) => {
+      const firstRank = pinRank.get(first.id) ?? Number.MAX_SAFE_INTEGER;
+      const secondRank = pinRank.get(second.id) ?? Number.MAX_SAFE_INTEGER;
+      if (firstRank !== secondRank) return firstRank - secondRank;
+      return new Date(second.updated).getTime() - new Date(first.updated).getTime();
+    });
+  }, [activeTab, pinRank, prompts, search]);
 
   const openCreate = (visibility: PromptVisibility) => {
     setEditingPrompt(null);

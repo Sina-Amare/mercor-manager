@@ -175,6 +175,13 @@ try {
 
   const ranks = await page.locator('.prompts-pinned-rank').allInnerTexts();
   check(ranks.join('') === '123', 'numbered 1, 2, 3', ranks.join(','));
+
+  // The cards below have to follow the pin order too — otherwise the arrows
+  // rearrange a strip while the list you actually read ignores them.
+  const cardTitles = () => page.locator('.prompt-card h2').allInnerTexts();
+  check((await cardTitles()).slice(0, 3).join('|') === (await names()).join('|'),
+    'the cards below lead with the pinned ones, in the same order',
+    (await cardTitles()).slice(0, 3).join(' / '));
   if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/prompt-pins.png` });
 
   // The ends cannot move past themselves.
