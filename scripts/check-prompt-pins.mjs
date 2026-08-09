@@ -51,7 +51,7 @@ async function stub(page, actor, pins) {
   await page.route('**/realtime/v1/**', (route) => route.abort());
   await page.route('**/functions/v1/**', (route) => route.fulfill({ status: 503, body: '{}' }));
 
-  await page.route('**/rest/v1/**', (route) => {
+  await page.route('**/rest/v1/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const table = url.pathname.split('/rest/v1/')[1]?.split('?')[0];
@@ -102,6 +102,10 @@ async function stub(page, actor, pins) {
       // no longer exists is a zero-row no-op instead of being re-created. The
       // stub has to model that or the test cannot tell the two apart.
       if (request.method() === 'PATCH') {
+        // A real round trip is a few hundred milliseconds. Answering instantly
+        // hides every ordering bug that only exists while a write is in
+        // flight — including clicks arriving faster than the server replies.
+        await new Promise((resolve) => setTimeout(resolve, 400));
         const { userId, promptId } = keyed();
         if (userId !== actor.id) return denied();
         const row = pins.find((p) => p.user_id === userId && p.prompt_id === promptId);
@@ -244,6 +248,24 @@ try {
   check((await names()).length === 2,
     'and the reorder still went through for the pins that remain', (await names()).join(' / '));
 
+  // Walking a pin up the list is several clicks in about a second. Every one of
+  // them has to count: a press that lands while the previous write is still in
+  // flight used to be dropped on the floor, and the arrows stay enabled, so the
+  // button looked live while doing nothing.
+  await cardPin('Beta pretext').click();
+  await page.waitForTimeout(700);
+  const before = await names();
+  const last = before.length - 1;
+  // No wait between them: the second lands while the first write is still out.
+  await items.nth(last).locator('button[title="Move up"]').click({ noWaitAfter: true });
+  await page.waitForTimeout(120);
+  await items.nth(last - 1).locator('button[title="Move up"]').click({ noWaitAfter: true });
+  await page.waitForTimeout(4000);
+  const after = await names();
+  check(after[last - 2] === before[last],
+    'two quick arrow clicks both count, not just the first',
+    `${before.join(' / ')}  ->  ${after.join(' / ')}`);
+
   // Keyboard reordering has to leave focus somewhere usable, or walking a pin
   // up the list means tabbing in from the top of the page after every step.
   await page.locator('[data-pin-control="p_alpha:-1"]').focus();
@@ -285,15 +307,15 @@ try {
   await page.fill('.prompts-search input', '');
   await page.waitForTimeout(300);
 
-  for (const title of ['Alpha opener', 'Gamma framing']) {
-    await cardPin(title).click();
-    await page.waitForTimeout(400);
+  // Unpin from the strip itself, so this keeps working however many are pinned.
+  for (let i = 0; i < 8; i += 1) {
+    const remove = items.first().locator('button[title="Remove pin"]');
+    if (!(await remove.count())) break;
+    await remove.click();
+    await page.waitForTimeout(600);
   }
-  await page.click('.prompts-tab:has-text("My prompts")');
-  await page.waitForTimeout(300);
-  await cardPin('My own note').click();
-  await page.waitForTimeout(500);
-  check(!(await strip.count()), 'the strip disappears when the last visible pin goes');
+  check(!(await strip.count()), 'the strip disappears when the last visible pin goes',
+    `${await items.count()} left`);
 
   await context.close();
 

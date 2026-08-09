@@ -73,6 +73,8 @@ export default function Prompts() {
   // Re-entrancy guard that does not lag a render behind, so the arrows can stay
   // enabled while a write is running instead of vanishing under the pointer.
   const pinBusyRef = useRef(false);
+  // Pin writes run in sequence. A click during a write is queued, not dropped.
+  const pinQueue = useRef<Promise<void>>(Promise.resolve());
   // Which control to put focus back on once the strip has re-rendered.
   const [focusAfterMove, setFocusAfterMove] = useState<string | null>(null);
   const [moveAnnouncement, setMoveAnnouncement] = useState('');
@@ -316,10 +318,24 @@ export default function Prompts() {
 
   const isPinned = (promptId: string) => pins.some((pin) => pin.prompt_id === promptId);
 
-  const runPinAction = async (action: () => Promise<void>, errorKey: string) => {
-    // The ref, not the state: state lags a render, and the arrows deliberately
-    // stay enabled during a write so they do not disappear under the pointer.
-    if (!user || pinBusyRef.current) return;
+  /**
+   * Runs pin writes one after another instead of dropping the ones that arrive
+   * while another is in flight.
+   *
+   * Walking a pin from fifth place to first is four clicks in about a second.
+   * The previous guard returned early for every click that landed during the
+   * ~half-second write-and-reread, so most of them vanished — and because the
+   * arrows stay enabled (disabling them steals keyboard focus), the button
+   * looked live while doing nothing. Queueing keeps every press.
+   */
+  const runPinAction = (action: () => Promise<void>, errorKey: string) => {
+    const queued = pinQueue.current.then(() => performPinAction(action, errorKey));
+    pinQueue.current = queued.catch(() => {});
+    return queued;
+  };
+
+  const performPinAction = async (action: () => Promise<void>, errorKey: string) => {
+    if (!user) return;
     pinBusyRef.current = true;
     pinsRevision.current += 1;
     setPinBusy(true);
