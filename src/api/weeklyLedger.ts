@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { wrapSupabaseError } from './errors';
 import type {
   ProjectKey,
   WorkWeek,
@@ -14,19 +15,8 @@ const PROJECT_FIELDS =
 const MEMBER_FIELDS = 'week_id,user_id,project,tasks_done';
 const BONUS_FIELDS = 'id,week_id,user_id,project,amount_usd,note,created';
 
-function ledgerError(action: string, error: unknown) {
-  const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
-  if (code === 'PGRST205' || code === '42P01') {
-    return new Error('The weekly ledger has not been configured in Supabase yet');
-  }
-  const message =
-    error instanceof Error
-      ? error.message
-      : error && typeof error === 'object' && 'message' in error
-        ? String(error.message)
-        : 'Unknown cloud error';
-  return new Error(`${action} failed in Supabase: ${message}`);
-}
+const ledgerError = (action: string, error: unknown) =>
+  wrapSupabaseError(action, error, 'The weekly ledger has not been configured in Supabase yet');
 
 /**
  * Postgres `numeric` comes back as a string over PostgREST. Coercing here

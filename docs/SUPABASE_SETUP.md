@@ -25,6 +25,15 @@ Apply in filename order through the SQL editor.
 | `20260738_targeted_announcements.sql` | `announcements` table; replaces the notice columns on `settings` | with the build that reads it |
 | `20260739_announcement_replies.sql` | `users.can_reply_announcements`, `announcement_replies`, RLS, Realtime | **before** the build that reads it |
 | `20260740_prompt_pins.sql` | `prompt_pins`: per-person pinned prompts, private even from admins | yes |
+| `20260741_weekly_ledger.sql` | Weekly ledger tables (`work_weeks`, projects, members, bonuses), RLS, Realtime | **before** the build that reads it |
+
+> **Redeploying `admin-users`:** the Edge Function is code, not a migration —
+> schema changes do not pick up function changes. After pulling a build that
+> changes it, run `supabase functions deploy admin-users`. The current shape of
+> the client expects the `import` action (backup restore) and the self-guard in
+> `update`; an older deployed function leaves backup import failing exactly as
+> it did before, with `Unknown action "import"`, and self-demotion protection
+> absent.
 
 ## The authentication cutover
 

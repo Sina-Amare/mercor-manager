@@ -75,7 +75,12 @@ export default function PaymentPanel({
                 type="number"
                 className="form-input input-mono"
                 value={usd}
-                onChange={(event) => setUsd(Number(event.target.value))}
+                onChange={(event) => {
+                  // A NaN landing in state desyncs the controlled input;
+                  // typing "1e" mid-number is a pause, not a change.
+                  const parsed = Number(event.target.value);
+                  if (Number.isFinite(parsed)) setUsd(parsed);
+                }}
                 min={0}
                 step={0.01}
                 disabled={saving}

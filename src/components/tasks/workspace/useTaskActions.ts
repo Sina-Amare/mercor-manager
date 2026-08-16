@@ -37,7 +37,8 @@ export function useTaskActions(task: Task, onTaskGone?: () => void) {
   const { updateTask: updateTaskInStore, removeTask } = useAppStore();
   const { addToast } = useToastStore();
   const [saving, setSaving] = useState(false);
-  const savingRef = useRef(false);
+  // Writes run one at a time, newest behind the current one.
+  const chainRef = useRef<Promise<unknown> | null>(null);
 
   const handleConflict = useCallback(
     (error: TaskConflictError) => {
@@ -58,57 +59,72 @@ export function useTaskActions(task: Task, onTaskGone?: () => void) {
       patch: Partial<Task>,
       options: ApplyOptions & { undoOf?: Task } = {}
     ): Promise<Task | null> => {
-      if (savingRef.current) return null;
-      savingRef.current = true;
-      setSaving(true);
+      // A call that arrives while another write is in flight is queued behind
+      // it, not dropped. The old guard returned null for the loser, which the
+      // draft hook read as a save failure — an edit that merely raced a
+      // status change raised the "unsaved work" alarm over nothing. The
+      // queued write may still lose the optimistic-concurrency check if the
+      // first write bumped `updated`; that is a real conflict and reconciles
+      // through the normal path.
+      const execute = async (): Promise<Task | null> => {
+        setSaving(true);
+        try {
+          const updated = await apiUpdateTask(target.id, patch, {
+            expectedStatus: target.status,
+            expectedAssignee: target.assigned_to,
+            expectedUpdated: options.expectedUpdated ?? target.updated,
+          });
+          updateTaskInStore(updated.id, updated);
 
-      try {
-        const updated = await apiUpdateTask(target.id, patch, {
-          expectedStatus: target.status,
-          expectedAssignee: target.assigned_to,
-          expectedUpdated: options.expectedUpdated ?? target.updated,
-        });
-        updateTaskInStore(updated.id, updated);
+          const offerUndo =
+            options.undoLabel && canUndo(target, updated, user)
+              ? {
+                  label: options.undoLabel,
+                  run: async () => {
+                    // Undo against the newest version we know of, not the one we
+                    // wrote — somebody else may have touched it in the meantime.
+                    const latest =
+                      useAppStore.getState().tasks.find((item) => item.id === updated.id) ??
+                      updated;
+                    await write(latest, undoPatch(target, updated), {
+                      success: t('tasks.undone'),
+                      error: t('tasks.undo_error'),
+                    });
+                  },
+                }
+              : undefined;
 
-        const offerUndo =
-          options.undoLabel && canUndo(target, updated, user)
-            ? {
-                label: options.undoLabel,
-                run: async () => {
-                  // Undo against the newest version we know of, not the one we
-                  // wrote — somebody else may have touched it in the meantime.
-                  const latest =
-                    useAppStore.getState().tasks.find((item) => item.id === updated.id) ??
-                    updated;
-                  await write(latest, undoPatch(target, updated), {
-                    success: t('tasks.undone'),
-                    error: t('tasks.undo_error'),
-                  });
-                },
-              }
-            : undefined;
-
-        if (!options.silent) addToast(options.success ?? t('tasks.saved'), 'success', offerUndo);
-        return updated;
-      } catch (error) {
-        if (error instanceof TaskConflictError) {
-          handleConflict(error);
-        } else if (options.silent) {
-          // The save indicator already shows the failure; a toast per keystroke
-          // burst would be noise.
-          console.error('Auto-save failed:', error);
-        } else {
-          addToast(
-            options.error ||
-              (error instanceof Error ? error.message : t('tasks.status_update_error')),
-            'error'
-          );
+          if (!options.silent) addToast(options.success ?? t('tasks.saved'), 'success', offerUndo);
+          return updated;
+        } catch (error) {
+          if (error instanceof TaskConflictError) {
+            handleConflict(error);
+          } else if (options.silent) {
+            // The save indicator already shows the failure; a toast per keystroke
+            // burst would be noise.
+            console.error('Auto-save failed:', error);
+          } else {
+            addToast(
+              options.error ||
+                (error instanceof Error ? error.message : t('tasks.status_update_error')),
+              'error'
+            );
+          }
+          return null;
+        } finally {
+          setSaving(false);
         }
-        return null;
-      } finally {
-        savingRef.current = false;
-        setSaving(false);
-      }
+      };
+
+      const previous = chainRef.current;
+      const result = previous ? previous.then(execute, execute) : execute();
+      // Keep the chain alive through failures so one rejected write cannot
+      // wedge every write that follows it.
+      chainRef.current = result.then(
+        () => undefined,
+        () => undefined
+      );
+      return result;
     },
     [addToast, handleConflict, t, updateTaskInStore, user]
   );

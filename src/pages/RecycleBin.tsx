@@ -108,12 +108,12 @@ export default function RecycleBin() {
           <table className="data-table recycle-bin-table">
             <thead>
               <tr>
-                <th>{t('tasks.task_id')}</th>
-                <th>{t('tasks.assigned_to')}</th>
-                <th>{t('recycle_bin.saved_status')}</th>
-                <th>{t('recycle_bin.deleted_by')}</th>
-                <th>{t('recycle_bin.deleted_at')}</th>
-                <th>{t('tasks.actions')}</th>
+                <th scope="col">{t('tasks.task_id')}</th>
+                <th scope="col">{t('tasks.assigned_to')}</th>
+                <th scope="col">{t('recycle_bin.saved_status')}</th>
+                <th scope="col">{t('recycle_bin.deleted_by')}</th>
+                <th scope="col">{t('recycle_bin.deleted_at')}</th>
+                <th scope="col">{t('tasks.actions')}</th>
               </tr>
             </thead>
             <tbody>

@@ -1,23 +1,12 @@
 import { supabase } from './supabase';
+import { wrapSupabaseError } from './errors';
 import type { Announcement, AnnouncementLevel, AnnouncementReply } from '../types';
 
 const FIELDS = 'id,body,level,target_user_id,created_by,created,updated';
 const REPLY_FIELDS = 'id,announcement_id,author_id,body,created';
 
-function announcementError(action: string, error: unknown) {
-  const code =
-    error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
-  if (code === 'PGRST205' || code === '42P01') {
-    return new Error('Announcements have not been configured in Supabase yet');
-  }
-  const message =
-    error instanceof Error
-      ? error.message
-      : error && typeof error === 'object' && 'message' in error
-        ? String(error.message)
-        : 'Unknown cloud error';
-  return new Error(`${action} failed in Supabase: ${message}`);
-}
+const announcementError = (action: string, error: unknown) =>
+  wrapSupabaseError(action, error, 'Announcements have not been configured in Supabase yet');
 
 /**
  * Everything the signed-in account is allowed to see.

@@ -63,3 +63,14 @@ export function setUserActive(id: string, isActive: boolean): Promise<User> {
 export function deleteUser(id: string): Promise<{ id: string }> {
   return callAdminUsers<{ id: string }>('delete', { id });
 }
+
+/**
+ * Restores user rows from a backup.
+ *
+ * The client lost its write grant on public.users when RLS was cut over
+ * (rightly — role assignment cannot live in the browser), so an import has to
+ * go through the Edge Function like every other users write.
+ */
+export function importUsers(users: User[]): Promise<User[]> {
+  return callAdminUsers<User[]>('import', { users });
+}

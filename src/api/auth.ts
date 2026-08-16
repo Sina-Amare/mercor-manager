@@ -12,6 +12,14 @@ function loginEmail(username: string): string {
   return `${username.trim().toLowerCase()}@agnus.local`;
 }
 
+/**
+ * The profile behind a session, or null when there is none (or it is inactive).
+ *
+ * A failed request throws rather than returning null: "the row is not there"
+ * and "we could not ask the server" used to collapse into the same answer,
+ * which signed people out — and told them their account was inactive — over a
+ * network blip.
+ */
 async function loadProfile(authUserId: string): Promise<User | null> {
   const { data, error } = await supabase
     .from('users')
@@ -19,7 +27,8 @@ async function loadProfile(authUserId: string): Promise<User | null> {
     .eq('auth_user_id', authUserId)
     .maybeSingle();
 
-  if (error || !data) return null;
+  if (error) throw new Error('Could not reach the server');
+  if (!data) return null;
   const profile = data as User;
   return profile.is_active ? profile : null;
 }
@@ -34,7 +43,15 @@ export async function login(username: string, password: string): Promise<User> {
     throw new Error('Invalid username or password');
   }
 
-  const profile = await loadProfile(data.user.id);
+  let profile: User | null;
+  try {
+    profile = await loadProfile(data.user.id);
+  } catch {
+    // The credentials were right; reading the profile was what failed. End
+    // the session so it cannot dangle, but name the real problem.
+    await supabase.auth.signOut();
+    throw new Error('Could not reach the server');
+  }
   if (!profile) {
     await supabase.auth.signOut();
     throw new Error('This account is not active');
@@ -70,7 +87,18 @@ export function initAuth(onReady: () => void): () => void {
       return;
     }
 
-    const profile = await loadProfile(session.user.id);
+    let profile: User | null;
+    try {
+      profile = await loadProfile(session.user.id);
+    } catch {
+      // The profile read failed (network, most likely). Keep the session and
+      // the last known profile standing: a later TOKEN_REFRESHED or SIGNED_IN
+      // event retries this. Signing out here is how a flaky connection used
+      // to log people out of a perfectly good session.
+      settle();
+      return;
+    }
+
     if (profile) {
       useAuthStore.getState().login(profile);
     } else {

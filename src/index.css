@@ -2228,7 +2228,7 @@ body {
   white-space: nowrap;
 }
 
-.stage-tab:hover:not(:disabled) {
+.stage-tab:hover:not(.is-locked) {
   background: rgba(255, 255, 255, 0.6);
   color: var(--color-text-primary);
 }

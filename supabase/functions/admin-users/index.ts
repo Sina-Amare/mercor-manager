@@ -136,13 +136,22 @@ async function createAccount(service: SupabaseClient, payload: Record<string, un
   if (profileError) {
     // Do not leave an orphaned sign-in identity behind.
     await service.auth.admin.deleteUser(created.user.id);
+    if ((profileError as { code?: string }).code === '23505') {
+      // The pre-check above can miss a username typed in the same instant on
+      // another machine; the unique index cannot.
+      throw new RequestError(`Username "${username}" already exists`);
+    }
     throw new RequestError(profileError.message, 500);
   }
 
   return profile;
 }
 
-async function updateAccount(service: SupabaseClient, payload: Record<string, unknown>) {
+async function updateAccount(
+  service: SupabaseClient,
+  payload: Record<string, unknown>,
+  actorId: string
+) {
   const id = String(payload.id ?? '');
   if (!id) throw new RequestError('User id is required');
 
@@ -152,6 +161,20 @@ async function updateAccount(service: SupabaseClient, payload: Record<string, un
     .eq('id', id)
     .maybeSingle();
   if (!current) throw new RequestError('User not found', 404);
+
+  // The same self-protection set_active and delete already enforce. Without
+  // it here, `update` was the unguarded path: an admin could demote or
+  // deactivate themselves with a raw request, and the sole admin could strand
+  // the project with nobody left who can manage accounts.
+  const demotesSelf =
+    id === actorId &&
+    typeof payload.role === 'string' &&
+    payload.role !== 'admin' &&
+    current.role === 'admin';
+  const deactivatesSelf = id === actorId && payload.is_active === false;
+  if (demotesSelf || deactivatesSelf) {
+    throw new RequestError('You cannot change your own role or activation — ask another admin');
+  }
 
   const updates: Record<string, unknown> = { updated: new Date().toISOString() };
 
@@ -229,7 +252,7 @@ async function setActive(
   if (id === actorId && !isActive) {
     throw new RequestError('You cannot deactivate your own account');
   }
-  return updateAccount(service, { id, is_active: isActive });
+  return updateAccount(service, { id, is_active: isActive }, actorId);
 }
 
 async function deleteAccount(
@@ -248,13 +271,98 @@ async function deleteAccount(
     .maybeSingle();
   if (!current) return { id };
 
-  if (current.auth_user_id) {
-    await service.auth.admin.deleteUser(current.auth_user_id as string);
-  }
+  // Profile row first. If the second step fails, an identity with no profile
+  // behind it is deny-by-default — locked out, but recoverable by retrying.
+  // The old order left an orphaned profile whose sign-in identity was already
+  // gone, which nothing could repair.
   const { error } = await service.from('users').delete().eq('id', id);
   if (error) throw new RequestError(error.message, 500);
 
+  if (current.auth_user_id) {
+    const { error: authError } = await service.auth.admin.deleteUser(
+      current.auth_user_id as string
+    );
+    if (authError) {
+      throw new RequestError(
+        `Profile removed, but the sign-in identity remains: ${authError.message}`,
+        500
+      );
+    }
+  }
+
   return { id };
+}
+
+/**
+ * Restores user rows from a backup, under the service role with the same
+ * field whitelist the rest of this function writes.
+ *
+ * The client cannot do this itself: public.users carries no client write
+ * policy since the RLS cutover, so before this action existed the backup
+ * import failed on its first step no matter who ran it.
+ */
+async function importAccounts(
+  service: SupabaseClient,
+  payload: Record<string, unknown>,
+  actorId: string
+) {
+  const rows = payload.users;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new RequestError('Backup contains no users');
+  }
+
+  const imported: Record<string, unknown>[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') {
+      throw new RequestError('Backup contains an invalid user record');
+    }
+    const user = row as Record<string, unknown>;
+    if (
+      typeof user.id !== 'string' ||
+      typeof user.username !== 'string' ||
+      typeof user.name !== 'string' ||
+      (user.role !== 'admin' && user.role !== 'member') ||
+      typeof user.is_active !== 'boolean'
+    ) {
+      throw new RequestError('Backup contains an invalid user record');
+    }
+
+    // Never touch the auth link: a restore on the same project must not
+    // detach existing sign-in identities, and a backup exported by the client
+    // never contains it anyway.
+    const clean: Record<string, unknown> = {
+      id: user.id,
+      username: validateUsername(user.username),
+      email: typeof user.email === 'string' ? user.email : loginEmail(String(user.username)),
+      name: user.name,
+      role: user.role,
+      avatar: typeof user.avatar === 'string' ? user.avatar : '',
+      is_active: user.is_active,
+      created: typeof user.created === 'string' ? user.created : new Date().toISOString(),
+      updated: new Date().toISOString(),
+    };
+    if (typeof user.can_reply_announcements === 'boolean') {
+      clean.can_reply_announcements = user.can_reply_announcements;
+    }
+
+    // The importer's own row obeys the same rule as updateAccount: a backup
+    // must not be the way an admin demotes or deactivates themselves.
+    if (user.id === actorId && (user.role !== 'admin' || user.is_active === false)) {
+      throw new RequestError(
+        'The backup would change your own role or activation — ask another admin to import it'
+      );
+    }
+
+    imported.push(clean);
+  }
+
+  const { data, error } = await service
+    .from('users')
+    .upsert(imported, { onConflict: 'id' })
+    .select(USER_FIELDS);
+  if (error) throw new RequestError(error.message, 500);
+
+  return data;
 }
 
 // One-time migration: create an Auth identity for every legacy row that still
@@ -345,11 +453,13 @@ Deno.serve(async (request) => {
       case 'create':
         return json(request, await createAccount(service, payload));
       case 'update':
-        return json(request, await updateAccount(service, payload));
+        return json(request, await updateAccount(service, payload, actor.id));
       case 'set_active':
         return json(request, await setActive(service, payload, actor.id));
       case 'delete':
         return json(request, await deleteAccount(service, payload, actor.id));
+      case 'import':
+        return json(request, await importAccounts(service, payload, actor.id));
       default:
         return json(request, { error: `Unknown action "${action}"` }, 400);
     }

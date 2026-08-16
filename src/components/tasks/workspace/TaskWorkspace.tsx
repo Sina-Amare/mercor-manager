@@ -218,12 +218,11 @@ export default function TaskWorkspace({ task, onClose }: Props) {
   );
 
   const saveNotes = useCallback(
-    async (notes: string) => {
-      await apply({ admin_notes: notes }, {
+    async (notes: string) =>
+      apply({ admin_notes: notes }, {
         success: t('tasks.notes_saved'),
         error: t('tasks.notes_save_error'),
-      });
-    },
+      }),
     [apply, t]
   );
 

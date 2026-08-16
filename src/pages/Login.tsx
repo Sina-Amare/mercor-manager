@@ -34,11 +34,15 @@ export default function Login() {
       navigate(returnTo, { replace: true });
     } catch (err) {
       // Credential failures stay generic; an inactive account is worth naming
-      // so the member contacts an admin instead of retrying their password.
+      // so the member contacts an admin instead of retrying their password,
+      // and so is a network failure so they do not conclude the password is
+      // the problem.
       setError(
         err instanceof Error && err.message === 'This account is not active'
           ? t('login.inactive')
-          : t('login.error')
+          : err instanceof Error && err.message === 'Could not reach the server'
+            ? t('login.connection_error')
+            : t('login.error')
       );
     } finally {
       setLoading(false);
@@ -97,6 +101,8 @@ export default function Login() {
                   insetInlineEnd: '8px',
                   color: 'var(--color-text-secondary)',
                 }}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
                 title={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -119,6 +125,7 @@ export default function Login() {
             <button
               className={`header-lang-btn ${language === 'en' ? 'active' : ''}`}
               onClick={() => setLanguage('en' as Language)}
+              aria-pressed={language === 'en'}
             >
               EN
             </button>
@@ -126,6 +133,7 @@ export default function Login() {
               className={`header-lang-btn ${language === 'fa' ? 'active' : ''}`}
               onClick={() => setLanguage('fa' as Language)}
               style={{ fontFamily: 'var(--font-fa)' }}
+              aria-pressed={language === 'fa'}
             >
               فا
             </button>

@@ -151,7 +151,27 @@ export default function WeekPanel({
   };
 
   const setMeter = (project: ProjectKey, which: 'start' | 'end', value: string) =>
-    setMeters((current) => ({ ...current, [`${project}:${which}`]: value }));
+    setMeters((current) => {
+      const key = `${project}:${which}`;
+      const next = { ...current };
+      // An emptied box is not an edit. An empty override would parse to "not
+      // recorded" and Save would write NULL over the reading stored above —
+      // the exact accident the app treats blank readings as never meaning.
+      // The box falls back to the stored reading instead; clearing a meter
+      // is not an operation this panel offers.
+      const stored = formatMeter(
+        which === 'start' ? draft[project].tracker_start_minutes : draft[project].tracker_end_minutes
+      );
+      // Typing back exactly what is stored is agreement rather than an edit
+      // too — which is what otherwise kept the panel dirty after a box was
+      // touched and reverted.
+      if (value.trim() === '' || value === stored) {
+        delete next[key];
+        return next;
+      }
+      next[key] = value;
+      return next;
+    });
 
   const patch = (project: ProjectKey, changes: Partial<WorkWeekProject>) =>
     setDraft((current) => ({ ...current, [project]: { ...current[project], ...changes } }));

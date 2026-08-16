@@ -1,28 +1,12 @@
 import { supabase } from './supabase';
+import { wrapSupabaseError } from './errors';
 import type { SavedPrompt, User } from '../types';
 
 const PROMPT_FIELDS =
   'id,title,body,visibility,owner_id,created_by,created,updated';
 
-function errorCode(error: unknown) {
-  if (error && typeof error === 'object' && 'code' in error) {
-    return String(error.code);
-  }
-  return '';
-}
-
-function promptError(action: string, error: unknown) {
-  if (errorCode(error) === 'PGRST205' || errorCode(error) === '42P01') {
-    return new Error('Prompt storage has not been configured in Supabase yet');
-  }
-  const message =
-    error instanceof Error
-      ? error.message
-      : error && typeof error === 'object' && 'message' in error
-        ? String(error.message)
-        : 'Unknown cloud error';
-  return new Error(`${action} failed in Supabase: ${message}`);
-}
+const promptError = (action: string, error: unknown) =>
+  wrapSupabaseError(action, error, 'Prompt storage has not been configured in Supabase yet');
 
 function canEditPrompt(prompt: SavedPrompt, actor: User) {
   if (prompt.created_by) return prompt.created_by === actor.id;

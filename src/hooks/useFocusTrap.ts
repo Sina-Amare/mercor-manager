@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 const FOCUSABLE = [
   'a[href]',
@@ -19,6 +19,12 @@ export function useFocusTrap(
   active: boolean,
   onEscape?: () => void
 ) {
+  // Read through a ref so a parent passing a fresh inline closure (busy state
+  // flips, language changes) does not re-run the trap — which re-captured and
+  // re-focused the dialog on every one of those renders.
+  const onEscapeRef = useRef(onEscape);
+  onEscapeRef.current = onEscape;
+
   useEffect(() => {
     if (!active) return;
 
@@ -38,7 +44,7 @@ export function useFocusTrap(
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        onEscape?.();
+        onEscapeRef.current?.();
         return;
       }
       if (event.key !== 'Tab') return;
@@ -64,7 +70,7 @@ export function useFocusTrap(
       document.removeEventListener('keydown', handleKeyDown);
       previouslyFocused?.focus?.();
     };
-  }, [active, onEscape, ref]);
+  }, [active, ref]);
 }
 
 export default useFocusTrap;

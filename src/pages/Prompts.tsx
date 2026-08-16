@@ -34,6 +34,7 @@ import {
 import type { PromptPin, PromptVisibility, SavedPrompt } from '../types';
 import DateDisplay from '../components/shared/DateDisplay';
 import CopyButton from '../components/shared/CopyButton';
+import useFocusTrap from '../hooks/useFocusTrap';
 import { formatNumber } from '../utils/dates';
 
 function sortPrompts(prompts: SavedPrompt[]) {
@@ -78,6 +79,9 @@ export default function Prompts() {
   // Which control to put focus back on once the strip has re-rendered.
   const [focusAfterMove, setFocusAfterMove] = useState<string | null>(null);
   const [moveAnnouncement, setMoveAnnouncement] = useState('');
+
+  const editorRef = useRef<HTMLDivElement>(null);
+  const deleteRef = useRef<HTMLDivElement>(null);
 
   // The id, not the object. `publicUser()` mints a fresh object on every
   // login/updateUser, and both fire several times on a normal page load — the
@@ -262,6 +266,29 @@ export default function Prompts() {
     setFormTitle('');
     setFormBody('');
   };
+
+  /**
+   * Escape closes the editor only while it is pristine. Escape is muscle
+   * memory for "get me out of this dialog", and on an editor holding a
+   * 50,000-character draft that reflex must not cost the work — Cancel and
+   * the close button still close it the way they always have.
+   */
+  const escapeEditor = () => {
+    const pristine = editingPrompt
+      ? formTitle === editingPrompt.title && formBody === editingPrompt.body
+      : !formTitle && !formBody;
+    if (pristine) closeEditor();
+  };
+
+  // Both modals get the trap the shared ConfirmDialog has always had: focus
+  // held inside, Escape as a second Cancel, focus returned to what opened it.
+  // Declared after closeEditor, which is what Escape runs.
+  useFocusTrap(editorRef, editorOpen, saving ? undefined : escapeEditor);
+  useFocusTrap(
+    deleteRef,
+    Boolean(deletingPrompt),
+    deleting ? undefined : () => setDeletingPrompt(null)
+  );
 
   const handleSave = async () => {
     if (!user || saving) return;
@@ -584,7 +611,28 @@ export default function Prompts() {
       ) : null}
 
       <div className="prompts-toolbar">
-        <div className="prompts-tabs" role="tablist" aria-label={t('prompts.title')}>
+        <div
+          className="prompts-tabs"
+          role="tablist"
+          aria-label={t('prompts.title')}
+          onKeyDown={(event) => {
+            // The ARIA tabs pattern is arrows between tabs, not Tab-and-hunt.
+            // Left/Right flip meaning in RTL so the arrow always points where
+            // focus is going.
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+            const tabs = Array.from(
+              event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([aria-disabled="true"])')
+            );
+            const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
+            if (index === -1) return;
+            event.preventDefault();
+            const forward =
+              language === 'fa' ? event.key === 'ArrowLeft' : event.key === 'ArrowRight';
+            const next = tabs[(index + (forward ? 1 : tabs.length - 1)) % tabs.length];
+            next.focus();
+            next.click();
+          }}
+        >
           <button
             type="button"
             className={`prompts-tab ${activeTab === 'public' ? 'active' : ''}`}
@@ -755,7 +803,19 @@ export default function Prompts() {
             onClick={closeEditor}
             aria-label={t('common.close')}
           />
-          <div className="modal prompt-editor-modal" role="dialog" aria-modal="true">
+          <div
+            ref={editorRef}
+            className="modal prompt-editor-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={
+              editingPrompt
+                ? t('prompts.edit_prompt')
+                : editorVisibility === 'public'
+                  ? t('prompts.add_public')
+                  : t('prompts.add_personal')
+            }
+          >
             <div className="modal-header">
               <div>
                 <h2 className="modal-title">
@@ -793,7 +853,7 @@ export default function Prompts() {
                   placeholder={t('prompts.title_placeholder')}
                   maxLength={120}
                   dir="auto"
-                  autoFocus
+                  data-autofocus
                 />
               </div>
               <div className="form-group">
@@ -840,7 +900,13 @@ export default function Prompts() {
             onClick={() => !deleting && setDeletingPrompt(null)}
             aria-label={t('common.close')}
           />
-          <div className="modal prompt-delete-modal" role="alertdialog" aria-modal="true">
+          <div
+            ref={deleteRef}
+            className="modal prompt-delete-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-label={t('prompts.delete_title')}
+          >
             <div className="modal-header">
               <h2 className="modal-title">{t('prompts.delete_title')}</h2>
             </div>

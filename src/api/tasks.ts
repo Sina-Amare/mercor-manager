@@ -1,4 +1,6 @@
 import { supabase } from './supabase';
+import { wrapSupabaseError } from './errors';
+import { importUsers } from './users';
 import { useAppStore } from '../store';
 import { TASK_STATUSES, type Task, type User, type TaskStatus, type AppSettings } from '../types';
 
@@ -31,16 +33,8 @@ function deduplicateUsers(users: User[]): User[] {
     .filter((u, i, arr) => arr.findIndex((x) => x.id === u.id || x.username === u.username) === i);
 }
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (error && typeof error === 'object' && 'message' in error) {
-    return String(error.message);
-  }
-  return 'Unknown cloud error';
-}
-
 function cloudWriteError(action: string, error: unknown): Error {
-  return new Error(`${action} failed in Supabase: ${getErrorMessage(error)}`);
+  return wrapSupabaseError(action, error);
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -364,10 +358,14 @@ export async function checkDuplicateTaskId(taskId: string): Promise<{
   existingTask?: Task;
   assignedToName?: string;
 }> {
+  // ilike treats % and _ as wildcards, while the database's uniqueness is a
+  // plain btrim(lower(...)) comparison — escape them so an id that merely
+  // contains one is not reported as a duplicate of a different task.
+  const escaped = taskId.trim().replace(/[\\%_]/g, (ch) => `\\${ch}`);
   const { data, error } = await supabase
     .from('tasks')
     .select('*')
-    .ilike('task_id', taskId.trim())
+    .ilike('task_id', escaped)
     .limit(1);
 
   if (error) throw cloudWriteError('Checking duplicate task ID', error);
@@ -472,8 +470,15 @@ export async function importBackup(jsonStr: string): Promise<{
   const importedUsers = deduplicateUsers(parsed.users as User[]);
   const importedSettings = parsed.settings as AppSettings;
 
-  const [usersResult, settingsResult] = await Promise.all([
-    supabase.from('users').upsert(importedUsers),
+  // Users go through the admin-users Edge Function: the client holds only a
+  // SELECT grant on public.users since the RLS cutover, so an upsert from here
+  // is refused no matter who is importing. Settings and tasks the client may
+  // still write directly.
+  const [usersError, settingsResult] = await Promise.all([
+    importUsers(importedUsers).then(
+      () => undefined,
+      (error: unknown) => cloudWriteError('Importing users', error)
+    ),
     supabase.from('settings').upsert(importedSettings),
   ]);
 
@@ -488,7 +493,7 @@ export async function importBackup(jsonStr: string): Promise<{
     tasksResult = await supabase.from('tasks').upsert(legacyTaskRows);
   }
 
-  const syncError = usersResult.error || tasksResult.error || settingsResult.error;
+  const syncError = usersError || tasksResult.error || settingsResult.error;
   if (syncError) throw cloudWriteError('Importing backup', syncError);
 
   return {

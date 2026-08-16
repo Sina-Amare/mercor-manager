@@ -26,8 +26,19 @@ export default function ToastContainer() {
               className="btn btn-sm toast-undo"
               onClick={() => {
                 const undo = toast.undo;
+                if (!undo) return;
                 removeToast(toast.id);
-                void undo?.run();
+                // A failed undo must not pass silently — the whole promise of
+                // this button is that reversing the action is one click, so
+                // when it is not, that has to be said out loud.
+                void Promise.resolve(undo.run()).catch((error: unknown) => {
+                  useToastStore.getState().addToast(
+                    error instanceof Error && error.message
+                      ? `${t('common.undo_failed')}: ${error.message}`
+                      : t('common.undo_failed'),
+                    'error'
+                  );
+                });
               }}
             >
               <RotateCcw size={13} aria-hidden="true" />

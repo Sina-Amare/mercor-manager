@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRightLeft,
@@ -47,6 +47,33 @@ const PAGE_SIZE = 200;
 // A task nobody has touched for this long is worth pointing at.
 const STALE_DAYS = 7;
 
+/** Module level on purpose: declared inside the component it got a new type
+ *  identity every render, so React remounted each sortable header cell. */
+function SortHeader({
+  column,
+  label,
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  column: SortKey;
+  label: string;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (key: SortKey) => void;
+}) {
+  const state: 'ascending' | 'descending' | 'none' =
+    sortKey !== column ? 'none' : sortDir === 'asc' ? 'ascending' : 'descending';
+  return (
+    <th scope="col" aria-sort={state}>
+      <button type="button" className="data-table-sort" onClick={() => onSort(column)}>
+        {label}
+        {sortKey === column && (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
+      </button>
+    </th>
+  );
+}
+
 export default function TaskTable({
   tasks: inputTasks,
   title,
@@ -89,7 +116,13 @@ export default function TaskTable({
 
   const inputTaskIds = useMemo(() => new Set(inputTasks.map((task) => task.id)), [inputTasks]);
   const activeSelectedTaskIds = selectedTaskIds.filter((id) => inputTaskIds.has(id));
-  const selectedTasks = inputTasks.filter((task) => activeSelectedTaskIds.includes(task.id));
+  // A Set, so selection lookups inside row maps stay constant-time with a
+  // large page selected.
+  const activeSelectedSet = useMemo(
+    () => new Set(activeSelectedTaskIds),
+    [activeSelectedTaskIds]
+  );
+  const selectedTasks = inputTasks.filter((task) => activeSelectedSet.has(task.id));
 
   useEffect(() => () => clearSelection(), [clearSelection]);
   useEffect(() => setPage(0), [search, activeStatusFilter, sortKey, sortDir]);
@@ -154,6 +187,16 @@ export default function TaskTable({
   const pageCount = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
   const visibleTasks = filteredTasks.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
+  // Counted once per roster change, not once per status per render.
+  const statusCounts = useMemo(() => {
+    const counts = new Map<TaskStatus, number>();
+    for (const statusKey of TASK_STATUSES) counts.set(statusKey, 0);
+    for (const task of inputTasks) {
+      counts.set(task.status, (counts.get(task.status) ?? 0) + 1);
+    }
+    return counts;
+  }, [inputTasks]);
+
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'));
@@ -163,21 +206,17 @@ export default function TaskTable({
     }
   };
 
-  const sortState = (key: SortKey): 'ascending' | 'descending' | 'none' =>
-    sortKey !== key ? 'none' : sortDir === 'asc' ? 'ascending' : 'descending';
-
-  const SortHeader = ({ column, label }: { column: SortKey; label: string }) => (
-    <th scope="col" aria-sort={sortState(column)}>
-      <button type="button" className="data-table-sort" onClick={() => handleSort(column)}>
-        {label}
-        {sortKey === column &&
-          (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
-      </button>
-    </th>
-  );
-
   const allVisibleSelected =
-    visibleTasks.length > 0 && visibleTasks.every((task) => activeSelectedTaskIds.includes(task.id));
+    visibleTasks.length > 0 && visibleTasks.every((task) => activeSelectedSet.has(task.id));
+  const someVisibleSelected =
+    !allVisibleSelected && visibleTasks.some((task) => activeSelectedSet.has(task.id));
+
+  const headerCheckRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    // The third state a bare checkbox cannot express: some rows picked, not
+    // all — the old two-state header hid that a cross-page selection existed.
+    if (headerCheckRef.current) headerCheckRef.current.indeterminate = someVisibleSelected;
+  }, [someVisibleSelected, allVisibleSelected, visibleTasks]);
 
   const handleSelectAll = () => {
     if (allVisibleSelected) clearSelection();
@@ -277,20 +316,54 @@ export default function TaskTable({
     setBusy(true);
     try {
       // Each task gets its own effects, since verdict and payment side-effects
-      // depend on where that task is coming from.
-      const results = await Promise.all(
+      // depend on where that task is coming from. One rejection used to
+      // discard the successes too: the server kept them while the local
+      // store quietly rolled back, so the table lied until Realtime
+      // caught up. Settle them individually and keep what landed.
+      const settled = await Promise.allSettled(
         selectedTasks.map((task) =>
           apiUpdateTasks([task.id], transitionEffects(task, bulkTransition.to))
         )
       );
-      results.flat().forEach((task) => updateTask(task.id, task));
-      addToast(
-        `${t('tasks.status_updated')} ${t(`status.${bulkTransition.to}`)}`,
-        'success'
-      );
-      clearSelection();
-    } catch (error) {
-      addToast(error instanceof Error ? error.message : t('tasks.status_update_error'), 'error');
+
+      const moved: Task[] = [];
+      const stuckIds: string[] = [];
+      let firstReason: unknown = null;
+      settled.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          moved.push(...result.value);
+        } else {
+          stuckIds.push(selectedTasks[index].id);
+          firstReason ??= result.reason;
+        }
+      });
+
+      moved.forEach((task) => updateTask(task.id, task));
+
+      if (stuckIds.length === 0) {
+        addToast(
+          `${t('tasks.status_updated')} ${t(`status.${bulkTransition.to}`)}`,
+          'success'
+        );
+        clearSelection();
+      } else {
+        // Keep exactly the stuck ones selected, so "try again" is one click
+        // rather than a hunt through the page.
+        selectAllTasks(stuckIds);
+        if (moved.length === 0) {
+          addToast(
+            firstReason instanceof Error ? firstReason.message : t('tasks.status_update_error'),
+            'error'
+          );
+        } else {
+          addToast(
+            t('tasks.bulk_partial')
+              .replace('{moved}', formatNumber(selectedTasks.length - stuckIds.length, language))
+              .replace('{failed}', formatNumber(stuckIds.length, language)),
+            'warning'
+          );
+        }
+      }
     } finally {
       setBusy(false);
       setBulkTransition(null);
@@ -320,7 +393,7 @@ export default function TaskTable({
           {t('nav.all_tasks')} ({formatNumber(inputTasks.length, language)})
         </button>
         {TASK_STATUSES.map((statusKey) => {
-          const count = inputTasks.filter((task) => task.status === statusKey).length;
+          const count = statusCounts.get(statusKey) ?? 0;
           return (
             <button
               key={statusKey}
@@ -370,6 +443,7 @@ export default function TaskTable({
                 {isAdmin && showActions && (
                   <th scope="col" className="cell-check">
                     <input
+                      ref={headerCheckRef}
                       type="checkbox"
                       className="data-table-checkbox"
                       checked={allVisibleSelected}
@@ -378,12 +452,14 @@ export default function TaskTable({
                     />
                   </th>
                 )}
-                <SortHeader column="task_id" label={t('tasks.task_id')} />
-                {showMember && <SortHeader column="assigned_to" label={t('tasks.assigned_to')} />}
-                <SortHeader column="status" label={t('tasks.status')} />
-                <SortHeader column="updated" label={t('tasks.last_activity')} />
-                <SortHeader column="created" label={t('tasks.created')} />
-                <SortHeader column="payment_amount_usd" label={t('tasks.payment')} />
+                <SortHeader column="task_id" label={t('tasks.task_id')} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                {showMember && (
+                  <SortHeader column="assigned_to" label={t('tasks.assigned_to')} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                )}
+                <SortHeader column="status" label={t('tasks.status')} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <SortHeader column="updated" label={t('tasks.last_activity')} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <SortHeader column="created" label={t('tasks.created')} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <SortHeader column="payment_amount_usd" label={t('tasks.payment')} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                 {isAdmin && showActions && <th scope="col">{t('tasks.actions')}</th>}
               </tr>
             </thead>
@@ -393,7 +469,7 @@ export default function TaskTable({
                 return (
                   <tr
                     key={task.id}
-                    className={activeSelectedTaskIds.includes(task.id) ? 'selected' : ''}
+                    className={activeSelectedSet.has(task.id) ? 'selected' : ''}
                     onClick={(event) => {
                       if (!(event.target as HTMLElement).closest('button, input, a, select')) {
                         navigate(`/task/${task.id}`);
@@ -405,7 +481,7 @@ export default function TaskTable({
                         <input
                           type="checkbox"
                           className="data-table-checkbox"
-                          checked={activeSelectedTaskIds.includes(task.id)}
+                          checked={activeSelectedSet.has(task.id)}
                           onChange={() => toggleTaskSelection(task.id)}
                           aria-label={`${t('tasks.select')}: ${task.task_id}`}
                         />

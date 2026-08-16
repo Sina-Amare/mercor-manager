@@ -1,21 +1,11 @@
 import { supabase } from './supabase';
+import { wrapSupabaseError } from './errors';
 import type { PromptPin } from '../types';
 
 const FIELDS = 'user_id,prompt_id,sort_order,created';
 
-function pinError(action: string, error: unknown) {
-  const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
-  if (code === 'PGRST205' || code === '42P01') {
-    return new Error('Pinned prompts have not been configured in Supabase yet');
-  }
-  const message =
-    error instanceof Error
-      ? error.message
-      : error && typeof error === 'object' && 'message' in error
-        ? String(error.message)
-        : 'Unknown cloud error';
-  return new Error(`${action} failed in Supabase: ${message}`);
-}
+const pinError = (action: string, error: unknown) =>
+  wrapSupabaseError(action, error, 'Pinned prompts have not been configured in Supabase yet');
 
 /**
  * This person's pins, in their order.

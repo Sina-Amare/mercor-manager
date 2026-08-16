@@ -33,3 +33,6 @@ backups/
 
 # Rendered screenshots (regenerate with: npm run dev + node scripts/screenshots.mjs)
 screenshots/
+
+# ZCode session artifacts
+.zcode/

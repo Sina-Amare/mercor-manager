@@ -347,7 +347,12 @@ export default function Payments() {
             type="number"
             className="form-input input-mono"
             value={editUsd}
-            onChange={(event) => setEditUsd(Number(event.target.value))}
+            onChange={(event) => {
+              // A NaN landing in state desyncs the controlled input; typing
+              // "1e" mid-number is a pause, not a change.
+              const parsed = Number(event.target.value);
+              if (Number.isFinite(parsed)) setEditUsd(parsed);
+            }}
             min={0}
             step={0.01}
             data-autofocus

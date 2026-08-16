@@ -478,7 +478,12 @@ export default function Settings() {
                   type="number"
                   className="form-input input-mono"
                   value={rate}
-                  onChange={(event) => setRate(Number(event.target.value))}
+                  onChange={(event) => {
+                    // A NaN landing in state desyncs the controlled input;
+                    // typing "1e" mid-number is a pause, not a change.
+                    const parsed = Number(event.target.value);
+                    if (Number.isFinite(parsed)) setRate(parsed);
+                  }}
                   min={0}
                 />
                 <span aria-hidden="true">IRR</span>

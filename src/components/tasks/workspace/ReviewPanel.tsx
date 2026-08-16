@@ -9,13 +9,14 @@ import CopyButton from '../../shared/CopyButton';
 interface Props {
   task: Task;
   isAdmin: boolean;
-  onSaveNotes: (notes: string) => Promise<void>;
+  /** Persists the patch. Resolves with the stored task, or null if it failed. */
+  onSaveNotes: (notes: string) => Promise<Task | null>;
 }
 
 export default function ReviewPanel({ task, isAdmin, onSaveNotes }: Props) {
   const { t } = useLanguageStore();
   const [notes, setNotes] = useState(task.admin_notes || '');
-  const [notesState, setNotesState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [notesState, setNotesState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const notesDirty = notes !== (task.admin_notes || '');
   const dirtyRef = useRef(false);
   dirtyRef.current = notesDirty;
@@ -30,8 +31,14 @@ export default function ReviewPanel({ task, isAdmin, onSaveNotes }: Props) {
   const persist = useCallback(async () => {
     if (!dirtyRef.current) return;
     setNotesState('saving');
-    await onSaveNotes(notes);
-    setNotesState('saved');
+    try {
+      const saved = await onSaveNotes(notes);
+      // A null here is a genuine failure — the write hook queues rather than
+      // drops, so "another save was in flight" never lands on this line.
+      setNotesState(saved ? 'saved' : 'error');
+    } catch {
+      setNotesState('error');
+    }
   }, [notes, onSaveNotes]);
 
   // Same auto-save contract as the shared fields — no button to forget.
@@ -93,11 +100,15 @@ export default function ReviewPanel({ task, isAdmin, onSaveNotes }: Props) {
           <div className="stage-panel-actions">
             <p
               className={`save-indicator ${
-                notesDirty
+                notesState === 'saving'
                   ? 'is-pending'
-                  : notesState === 'saved'
-                    ? 'is-saved'
-                    : 'is-idle'
+                  : notesState === 'error'
+                    ? 'is-error'
+                    : notesDirty
+                      ? 'is-pending'
+                      : notesState === 'saved'
+                        ? 'is-saved'
+                        : 'is-idle'
               }`}
               role="status"
             >
@@ -105,11 +116,13 @@ export default function ReviewPanel({ task, isAdmin, onSaveNotes }: Props) {
               {!notesDirty && notesState === 'saved' && <Check size={14} aria-hidden="true" />}
               {notesState === 'saving'
                 ? t('tasks.autosave_saving')
-                : notesDirty
-                  ? t('tasks.autosave_pending')
-                  : notesState === 'saved'
-                    ? t('tasks.autosave_saved')
-                    : t('tasks.autosave_idle')}
+                : notesState === 'error'
+                  ? t('tasks.autosave_failed')
+                  : notesDirty
+                    ? t('tasks.autosave_pending')
+                    : notesState === 'saved'
+                      ? t('tasks.autosave_saved')
+                      : t('tasks.autosave_idle')}
             </p>
           </div>
         </div>

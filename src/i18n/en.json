@@ -8,7 +8,8 @@
     "password": "Password",
     "submit": "Sign In",
     "error": "Invalid username or password",
-    "inactive": "This account is not active. Ask an admin to reactivate it."
+    "inactive": "This account is not active. Ask an admin to reactivate it.",
+    "connection_error": "Could not reach the server — check your connection and try again."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -199,6 +200,7 @@
     "bulk_reassign_confirm": "{count} task(s) move to {to}.",
     "bulk_reassigned": "{count} task(s) reassigned",
     "bulk_status_confirm": "Move {count} selected task(s) to {status}?",
+    "bulk_partial": "{moved} moved, {failed} could not be — the failed ones stay selected.",
     "bulk_actions": "Actions for the selected tasks",
     "clear_selection": "Clear selection",
     "select": "Select",
@@ -491,6 +493,7 @@
     "sync_error": "Could not sync data with the server",
     "type_to_confirm": "Type “{phrase}” to confirm",
     "undo": "Undo",
+    "undo_failed": "Undo did not complete — the change is still in place",
     "unexpected_error": "Something went wrong",
     "notifications": "Notifications",
     "dismiss": "Dismiss",

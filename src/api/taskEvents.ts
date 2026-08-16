@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { isMissingTable } from './errors';
 import type { TaskStatus } from '../types';
 
 export interface TaskEvent {
@@ -9,12 +10,6 @@ export interface TaskEvent {
   to_status: TaskStatus | null;
   changed_fields: string[];
   at: string;
-}
-
-function isMissingTable(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const code = 'code' in error ? String(error.code) : '';
-  return code === 'PGRST205' || code === '42P01';
 }
 
 /**

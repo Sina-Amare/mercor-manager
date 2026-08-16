@@ -152,7 +152,9 @@ interface AppState {
 }
 
 const defaultSettings: AppSettings = {
-  id: '1',
+  // Same row id the api layer defaults to, so an early rate save can never
+  // upsert a second settings row.
+  id: 'settings_1',
   usd_to_irr_rate: 580000,
   updated: new Date().toISOString(),
 };
@@ -286,11 +288,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
   updateMember: (id, updates) =>
     set((s) => {
       const existingMember = s.members.find((member) => member.id === id);
-      const updatedMember = existingMember
-        ? { ...existingMember, ...updates } as User
-        : undefined;
+      if (!existingMember) return {};
+      const updatedMember: User = { ...existingMember, ...updates };
       return {
-        members: s.members.map((member) => member.id === id ? updatedMember! : member),
+        members: s.members.map((member) => (member.id === id ? updatedMember : member)),
         tasks: s.tasks.map((task) =>
           task.assigned_to === id
             ? { ...task, expand: { assigned_to: updatedMember } }
@@ -379,6 +380,10 @@ const TOAST_MS = 4000;
 // An undoable toast has to outlive the moment of "wait, that was wrong".
 const UNDOABLE_TOAST_MS = 9000;
 
+// Cleared when a toast leaves early, so a stale timer can never filter an id
+// that a newer toast happens to reuse.
+const toastTimers = new Map<string, number>();
+
 interface ToastState {
   toasts: Toast[];
   addToast: (message: string, type: Toast['type'], undo?: Toast['undo']) => void;
@@ -390,10 +395,18 @@ export const useToastStore = create<ToastState>()((set) => ({
   addToast: (message, type, undo) => {
     const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random()}`;
     set((s) => ({ toasts: [...s.toasts, { id, message, type, undo }] }));
-    setTimeout(
-      () => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
-      undo ? UNDOABLE_TOAST_MS : TOAST_MS
-    );
+    const timer = window.setTimeout(() => {
+      toastTimers.delete(id);
+      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+    }, undo ? UNDOABLE_TOAST_MS : TOAST_MS);
+    toastTimers.set(id, timer);
   },
-  removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+  removeToast: (id) => {
+    const timer = toastTimers.get(id);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      toastTimers.delete(id);
+    }
+    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+  },
 }));

@@ -33,10 +33,33 @@ export default function StageTabs({
   actionableStage,
   dirtyStages,
 }: Props) {
-  const { t } = useLanguageStore();
+  const { t, language } = useLanguageStore();
 
   return (
-    <div className="stage-tabs" role="tablist" aria-label={t('tasks.stages')}>
+    <div
+      className="stage-tabs"
+      role="tablist"
+      aria-label={t('tasks.stages')}
+      onKeyDown={(event) => {
+        // The ARIA tabs pattern: arrows move between tabs, skipping the
+        // locked ones. Left/Right flip meaning in RTL so the arrow points
+        // where focus is going.
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        const tabs = Array.from(
+          event.currentTarget.querySelectorAll<HTMLButtonElement>(
+            '[role="tab"]:not([aria-disabled="true"])'
+          )
+        );
+        const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
+        if (index === -1) return;
+        event.preventDefault();
+        const forward =
+          language === 'fa' ? event.key === 'ArrowLeft' : event.key === 'ArrowRight';
+        const next = tabs[(index + (forward ? 1 : tabs.length - 1)) % tabs.length];
+        next.focus();
+        next.click();
+      }}
+    >
       {STAGES.map((stage) => {
         const meta = STAGE_META[stage];
         const Icon = meta.icon;
@@ -53,7 +76,10 @@ export default function StageTabs({
             aria-controls={`stage-panel-${stage}`}
             className={`stage-tab ${isActive ? 'active' : ''} ${lockReason ? 'is-locked' : ''}`}
             onClick={() => !lockReason && onSelect(stage)}
-            disabled={Boolean(lockReason)}
+            // aria-disabled rather than the disabled attribute: a disabled
+            // button cannot receive focus, so a keyboard or screen-reader user
+            // could never reach the tab and hear why it is locked.
+            aria-disabled={Boolean(lockReason)}
             title={lockReason}
           >
             {lockReason ? <Lock size={15} aria-hidden="true" /> : <Icon size={15} />}

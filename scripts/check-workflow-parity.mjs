@@ -7,17 +7,13 @@
 //
 //   node scripts/check-workflow-parity.mjs
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const ts = readFileSync(join(root, 'src/workflow.ts'), 'utf8');
-const sql = readFileSync(
-  join(root, 'supabase/migrations/20260730_auth_link_and_guardrails.sql'),
-  'utf8'
-);
 
 // ── src/workflow.ts: { from: 'x', to: 'y', by: BOTH | ADMIN_ONLY, … }
 const tsRows = [...ts.matchAll(/\{\s*\n?\s*from:\s*'(\w+)',\s*\n?\s*to:\s*'(\w+)',\s*\n?\s*by:\s*(\w+),/g)]
@@ -29,17 +25,42 @@ const tsRows = [...ts.matchAll(/\{\s*\n?\s*from:\s*'(\w+)',\s*\n?\s*to:\s*'(\w+)
   }));
 
 // ── SQL: ('from', 'to', admin_allowed, assignee_allowed)
-const insertBlock = sql.slice(
-  sql.indexOf('insert into public.task_transitions'),
-  sql.indexOf('grant select on public.task_transitions')
-);
-const sqlRows = [...insertBlock.matchAll(/\(\s*'(\w+)',\s*'(\w+)',\s*(true|false),\s*(true|false)\)/g)]
-  .map(([, from, to, admin, assignee]) => ({
-    from,
-    to,
-    admin: admin === 'true',
-    assignee: assignee === 'true',
-  }));
+//
+// Every migration is scanned in filename order, not just the one that first
+// seeded the table: a later migration that adds rows is as much a part of the
+// rulebook as the original. A bare `delete from public.task_transitions`
+// resets what has been collected so far, so a rewrite is read as a rewrite
+// rather than merged with the rows it replaced. (A selective DELETE with a
+// WHERE clause is not interpreted — if one ever appears, this script needs a
+// human's attention anyway.)
+let sqlRows = [];
+for (const file of readdirSync(join(root, 'supabase/migrations')).filter((name) => name.endsWith('.sql')).sort()) {
+  const sql = readFileSync(join(root, 'supabase/migrations', file), 'utf8');
+  if (!sql.includes('task_transitions')) continue;
+
+  if (/delete\s+from\s+public\.task_transitions\s*;/i.test(sql)) {
+    sqlRows = [];
+  }
+
+  let cursor = 0;
+  while (true) {
+    const at = sql.indexOf('insert into public.task_transitions', cursor);
+    if (at === -1) break;
+    const end = sql.indexOf(';', at);
+    const block = sql.slice(at, end === -1 ? undefined : end);
+    sqlRows.push(
+      ...[...block.matchAll(/\(\s*'(\w+)',\s*'(\w+)',\s*(true|false),\s*(true|false)\)/g)].map(
+        ([, from, to, admin, assignee]) => ({
+          from,
+          to,
+          admin: admin === 'true',
+          assignee: assignee === 'true',
+        })
+      )
+    );
+    cursor = end === -1 ? sql.length : end;
+  }
+}
 
 const key = (row) => `${row.from} -> ${row.to}`;
 const describe = (row) =>
