@@ -350,7 +350,17 @@
     "empty": "Recycle Bin is empty",
     "empty_help": "Tasks moved here will remain recoverable and searchable.",
     "no_results": "No recycled tasks match your search",
-    "no_results_help": "Try another Task ID, task text, or member name."
+    "no_results_help": "Try another Task ID, task text, or member name.",
+    "empty_bin": "Empty the bin",
+    "delete_selected": "Delete permanently",
+    "delete_forever": "Delete permanently",
+    "confirm_delete_title": "Delete these tasks for good?",
+    "confirm_empty_title": "Empty the whole recycle bin?",
+    "confirm_delete_body": "{count} task(s) will be removed for good. This cannot be undone.",
+    "confirm_delete_note": "Their Task IDs become free to upload again, and their history goes with them.",
+    "type_to_empty": "EMPTY",
+    "purged": "{count} task(s) deleted for good",
+    "purge_error": "Could not delete the tasks"
   },
   "settings": {
     "title": "Settings",

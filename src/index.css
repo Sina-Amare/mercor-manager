@@ -3403,6 +3403,21 @@ body {
   margin-inline-start: 14px;
 }
 
+.recycle-bin-header-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.recycle-bin-select-cell {
+  width: 2.5rem;
+}
+
+.recycle-bin-table tr.is-selected {
+  background: var(--color-primary-50);
+}
+
 /* ─── Weekly ledger ───────────────────────────────────────────────────────────
    A month laid out as Friday-to-Thursday rows. Everything uses logical
    properties so the whole grid mirrors in Persian without a second rule. */

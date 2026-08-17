@@ -26,6 +26,7 @@ Apply in filename order through the SQL editor.
 | `20260739_announcement_replies.sql` | `users.can_reply_announcements`, `announcement_replies`, RLS, Realtime | **before** the build that reads it |
 | `20260740_prompt_pins.sql` | `prompt_pins`: per-person pinned prompts, private even from admins | yes |
 | `20260741_weekly_ledger.sql` | Weekly ledger tables (`work_weeks`, projects, members, bonuses), RLS, Realtime | **before** the build that reads it |
+| `20260742_purge_recycled_tasks.sql` | Lets an admin permanently delete tasks that are already in the recycle bin | yes |
 
 > **Redeploying `admin-users`:** the Edge Function is code, not a migration —
 > schema changes do not pick up function changes. After pulling a build that
@@ -83,7 +84,13 @@ Role checks used to live only in React, which meant anyone holding the public
 key could set any status or payment on any task. Now:
 
 - **`tasks`** — members select and update only their own rows; only admins
-  insert; nobody deletes (removal is soft, through `deleted_at`).
+  insert. Deletion is soft, through `deleted_at`; the one hard delete is
+  `tasks_delete`, which an admin can only use on a row **already in the recycle
+  bin** (`using (private.is_admin() and deleted_at is not null)`). A live task
+  cannot be destroyed by any client however the request is shaped — verified:
+  an unqualified `delete from public.tasks` as an admin removes the bin and
+  leaves every live task standing. Purging is what releases a Task ID, which
+  the unique index otherwise keeps reserved for ever.
 - **`enforce_task_transition()`** — a status change must exist in
   `public.task_transitions` and be permitted for the acting role. Members cannot
   write assignment, review, payment or deletion columns at all. A paid task

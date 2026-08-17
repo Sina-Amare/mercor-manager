@@ -352,6 +352,34 @@ export async function restoreTask(id: string): Promise<Task> {
   return normalizeTask(data as Task);
 }
 
+/**
+ * Removes recycled tasks for good, releasing their Task IDs.
+ *
+ * A recycled task still holds its ID against the unique index, so the ID cannot
+ * be uploaded again until the row is gone. This is the only way to release one.
+ *
+ * `.not('deleted_at', 'is', null)` repeats what the delete policy already
+ * enforces. The policy is what makes it true; this makes it *visible* at the
+ * call site, and turns a live id passed here by mistake into zero rows deleted
+ * rather than a request the server has to refuse.
+ *
+ * Returns the ids actually removed, so the caller updates its list from what
+ * happened rather than from what it asked for.
+ */
+export async function purgeTasks(ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('tasks')
+    .delete()
+    .in('id', ids)
+    .not('deleted_at', 'is', null)
+    .select('id');
+
+  if (error) throw cloudWriteError('Deleting tasks permanently', error);
+  return (data || []).map((row) => (row as { id: string }).id);
+}
+
 export async function checkDuplicateTaskId(taskId: string): Promise<{
   isDuplicate: boolean;
   isRecycled?: boolean;
